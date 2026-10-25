@@ -1,30 +1,49 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { AccountDetailView } from "./AccountDetailView";
 import { AccountEditor } from "./AccountEditor";
 import { GROUP_ORDER, cardNote, computeBalances, groupSections, summarizeAccounts } from "./accountLogic";
+import type { EntryMode } from "./EntryView";
 import { Icon } from "./Icon";
 import { KebabMenu } from "./KebabMenu";
 import { formatYen } from "./money";
 import { byOrder, changedOrders, moveInOrder } from "./orderUtils";
+import { OutstandingView } from "./OutstandingView";
+import { outstandingGroups, outstandingSummary } from "./reimburseLogic";
+import { getReimburseSet } from "./reimburseStore";
 import { getAll, saveRecords } from "./storage";
 import { useToast } from "./Toast";
-import type { Account, Transaction } from "./types";
+import { prepareCardDebit } from "./transferLogic";
+import type { Account, Id, Transaction } from "./types";
 
 interface Props {
   tabBar: ReactNode;
+  today: string;
+  /** 保存・削除などで増える。変わったら読み直す */
+  version: number;
   onOpenSettings: () => void;
+  /** 明細の編集を開く（振替・収入・支出） */
+  onEdit: (tx: Transaction) => void;
+  /** 入力画面を開く（カードの引き落としの記録など） */
+  onOpenEntry: (mode: EntryMode) => void;
+  /** 入力画面（全画面）。資産タブの画面に重ねる */
+  overlay: ReactNode;
+  /** 残高修正の保存・削除のあと */
+  onChanged: () => void;
 }
 
-type Mode = { page: "list" } | { page: "hidden" } | { page: "edit"; account: Account | null; from: "list" | "hidden" };
+type BackMode = { page: "list" } | { page: "hidden" } | { page: "detail"; id: Id; from: "list" | "hidden" } | { page: "outstanding" };
+type Mode = BackMode | { page: "edit"; account: Account | null; from: BackMode };
 
 function Amount({ value }: { value: number }) {
   return <span className={value < 0 ? "neg" : undefined}>{formatYen(value)}</span>;
 }
 
 /** 資産タブ：合計の帯、種類ごとの一覧、追加・編集・並べ替え・非表示 */
-export function AssetsView({ tabBar, onOpenSettings }: Props) {
+export function AssetsView({ tabBar, today, version, onOpenSettings, onEdit, onOpenEntry, overlay, onChanged }: Props) {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [reimburse, setReimburse] = useState<Transaction[]>([]);
   const [mode, setMode] = useState<Mode>({ page: "list" });
   const [reordering, setReordering] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -32,9 +51,10 @@ export function AssetsView({ tabBar, onOpenSettings }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const [a, t] = await Promise.all([getAll("accounts"), getAll("transactions")]);
+      const [a, t, r] = await Promise.all([getAll("accounts"), getAll("transactions"), getReimburseSet()]);
       setAccounts(a);
       setTransactions(t);
+      setReimburse(r);
       setLoadError("");
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "データを開けませんでした");
@@ -43,7 +63,7 @@ export function AssetsView({ tabBar, onOpenSettings }: Props) {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, version]);
 
   const active = useMemo(() => (accounts ?? []).filter((a) => a.deletedAt === null), [accounts]);
   const balances = useMemo(() => computeBalances(active, transactions), [active, transactions]);
@@ -68,7 +88,10 @@ export function AssetsView({ tabBar, onOpenSettings }: Props) {
     return moveInOrder(siblings, account.id, direction, (a) => !a.hidden) !== null;
   };
 
-  const page = mode.page === "hidden" && hiddenAccounts.length === 0 ? "list" : mode.page;
+  const outstanding = useMemo(() => outstandingSummary(outstandingGroups(reimburse)), [reimburse]);
+  const detailAccount = mode.page === "detail" ? active.find((a) => a.id === mode.id) : undefined;
+  // 資産が削除されたなど、開いていた画面の元が無くなったときは一覧へ
+  const page = (mode.page === "hidden" && hiddenAccounts.length === 0) || (mode.page === "detail" && !detailAccount) ? "list" : mode.page;
 
   if (mode.page === "edit") {
     const editing = mode.account;
@@ -78,10 +101,10 @@ export function AssetsView({ tabBar, onOpenSettings }: Props) {
           account={editing}
           accounts={accounts ?? []}
           balance={editing ? (balances.get(editing.id) ?? 0) : 0}
-          onBack={() => setMode({ page: mode.from })}
+          onBack={() => setMode(mode.from)}
           onDone={(message) => {
             const from = mode.from;
-            setMode({ page: from });
+            setMode(from);
             showToast(message);
             void load();
           }}
@@ -122,12 +145,51 @@ export function AssetsView({ tabBar, onOpenSettings }: Props) {
     }
     return (
       <li key={a.id}>
-        <button type="button" className="list-row" onClick={() => setMode({ page: "edit", account: a, from: page === "hidden" ? "hidden" : "list" })}>
+        <button type="button" className="list-row" onClick={() => setMode({ page: "detail", id: a.id, from: page === "hidden" ? "hidden" : "list" })}>
           {body}
         </button>
       </li>
     );
   };
+
+  if (mode.page === "detail" && detailAccount) {
+    const from = mode.from;
+    return (
+      <div className="app">
+        <AccountDetailView
+          account={detailAccount}
+          accounts={active}
+          balance={balances.get(detailAccount.id) ?? 0}
+          today={today}
+          version={version}
+          showToast={showToast}
+          onBack={() => setMode({ page: from })}
+          onEditTx={onEdit}
+          onEditAccount={() => setMode({ page: "edit", account: detailAccount, from: mode })}
+          onRecordDebit={() => {
+            const r = prepareCardDebit(detailAccount, active, balances.get(detailAccount.id) ?? 0, today);
+            onOpenEntry({ kind: "new", date: today, transfer: r });
+          }}
+          onChanged={() => {
+            void load();
+            onChanged();
+          }}
+        />
+        {overlay}
+        {toast}
+      </div>
+    );
+  }
+
+  if (page === "outstanding") {
+    return (
+      <div className="app">
+        <OutstandingView version={version} onBack={() => setMode({ page: "list" })} onOpen={onEdit} />
+        {overlay}
+        {toast}
+      </div>
+    );
+  }
 
   if (page === "hidden") {
     return (
@@ -142,7 +204,7 @@ export function AssetsView({ tabBar, onOpenSettings }: Props) {
           <section className="card list-card">
             <ul className="list">{hiddenAccounts.map(row)}</ul>
           </section>
-          <p className="muted small">タップすると、表示に戻せます。非表示でも、残高は合計に入っています。</p>
+          <p className="muted small">タップすると資産の明細が開きます。表示に戻すときは、右上の︙から編集します。非表示でも、残高は合計に入っています。</p>
         </main>
         {toast}
       </div>
@@ -150,7 +212,7 @@ export function AssetsView({ tabBar, onOpenSettings }: Props) {
   }
 
   const menu = [
-    { label: "追加", onSelect: () => setMode({ page: "edit", account: null, from: "list" }) },
+    { label: "追加", onSelect: () => setMode({ page: "edit", account: null, from: { page: "list" } }) },
     { label: "並べ替え", onSelect: () => setReordering(true) },
     { label: "非表示の資産", onSelect: () => setMode({ page: "hidden" }) },
   ];
@@ -211,6 +273,14 @@ export function AssetsView({ tabBar, onOpenSettings }: Props) {
             </p>
           </section>
         )}
+        {outstanding.count > 0 && (
+          <button type="button" className="link-row outstanding-row" onClick={() => setMode({ page: "outstanding" })}>
+            <span>
+              未回収の立替 {outstanding.count}件 <strong>{formatYen(outstanding.total)}</strong>
+            </span>
+            <Icon name="chevron-right" size={18} />
+          </button>
+        )}
         {sections.map((s) => (
           <section key={s.group} className="card list-card">
             <h2 className="list-head">
@@ -228,6 +298,7 @@ export function AssetsView({ tabBar, onOpenSettings }: Props) {
         )}
       </main>
       {!reordering && tabBar}
+      {overlay}
       {toast}
     </div>
   );

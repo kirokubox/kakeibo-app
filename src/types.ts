@@ -68,7 +68,10 @@ export interface Transaction extends Base {
   content: string;
   memo: string;
   tag?: Tag;
-  reimbursement?: { counterparty: string; amount: number; settledTxId?: Id }; // 立替
+  /** 立替。settledTxId は段階4から使わない。返金は settles で数える（1回で返ってくる前提の項目だったため。型は互換のために残す） */
+  reimbursement?: { counterparty: string; amount: number; settledTxId?: Id };
+  /** 返金の収入が、どの立替（支出）を返したか。立替の残り = 立替の金額 − これで指す収入の合計 */
+  settles?: { txId: Id };
   reserveId?: Id; // 取り置きから払った支出
   estimated?: boolean; // 見込み額
   reconciledStatementId?: Id; // カード照合済み

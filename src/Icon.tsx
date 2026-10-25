@@ -22,6 +22,15 @@ const ICONS = {
       <path d="m19 12-7 7-7-7" />
     </>
   ),
+  // 上下の入れ替え（Lucide の arrow-up-down）
+  swap: (
+    <>
+      <path d="m21 16-4 4-4-4" />
+      <path d="M17 20V4" />
+      <path d="m3 8 4-4 4 4" />
+      <path d="M7 4v16" />
+    </>
+  ),
   plus: (
     <>
       <path d="M5 12h14" />

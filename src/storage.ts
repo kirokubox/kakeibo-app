@@ -96,6 +96,28 @@ export async function getTransactionsInRange(start: string, end: string): Promis
   return request(tx.objectStore("transactions").index("date").getAll(IDBKeyRange.bound(start, end)) as IDBRequest<Transaction[]>);
 }
 
+/**
+ * ある資産が出てくる取引（accountId か toAccountId がその資産）を、2つの索引で読む。
+ * 論理削除したものも含むので、画面側で activeOnly する。資産の明細の残高の動きに使う。
+ */
+export async function getAccountTransactions(accountId: string): Promise<Transaction[]> {
+  const db = await openDb();
+  const tx = db.transaction("transactions", "readonly");
+  const os = tx.objectStore("transactions");
+  const [from, to] = await Promise.all([
+    request(os.index("accountId").getAll(IDBKeyRange.only(accountId)) as IDBRequest<Transaction[]>),
+    request(os.index("toAccountId").getAll(IDBKeyRange.only(accountId)) as IDBRequest<Transaction[]>),
+  ]);
+  const seen = new Set<string>();
+  const merged: Transaction[] = [];
+  for (const t of [...from, ...to]) {
+    if (seen.has(t.id)) continue;
+    seen.add(t.id);
+    merged.push(t);
+  }
+  return merged;
+}
+
 /** 書き込み。書くたびに updatedAt を現在時刻にする（将来の同期に備える） */
 export async function saveRecord<K extends DataStoreName>(store: K, record: DataStoreRecords[K]): Promise<DataStoreRecords[K]> {
   const stamped = { ...record, updatedAt: nowIso() };

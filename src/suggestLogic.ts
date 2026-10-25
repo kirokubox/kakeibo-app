@@ -14,8 +14,12 @@ interface UseRecord {
   createdAt: string;
   categoryId?: Id;
   accountId: Id;
+  toAccountId?: Id; // 振替の入金
   tag?: Tag;
 }
+
+/** 内容の候補を出す種類（残高修正は内容を持たないので除く） */
+export type SuggestType = "income" | "expense" | "transfer";
 
 interface ContentEntry {
   content: string;
@@ -79,14 +83,22 @@ export function emptySuggestIndex(): SuggestIndex {
 function addToIndex(index: SuggestIndex, t: Transaction): void {
   const snap: Snapshot = { contentKey: null, words: [] };
   const content = t.content.trim();
-  if ((t.type === "income" || t.type === "expense") && content !== "") {
+  if ((t.type === "income" || t.type === "expense" || t.type === "transfer") && content !== "") {
     const key = contentKey(t.type, content);
     let entry = index.contents.get(key);
     if (!entry) {
       entry = { content, norm: normalizeForMatch(content), records: [] };
       index.contents.set(key, entry);
     }
-    entry.records.push({ id: t.id, date: t.date, createdAt: t.createdAt, categoryId: t.categoryId, accountId: t.accountId, tag: t.tag });
+    entry.records.push({
+      id: t.id,
+      date: t.date,
+      createdAt: t.createdAt,
+      categoryId: t.categoryId,
+      accountId: t.accountId,
+      toAccountId: t.toAccountId,
+      tag: t.tag,
+    });
     snap.contentKey = key;
   }
   const words = [...new Set(splitMemo(t.memo).filter(isCandidateWord))];
@@ -156,7 +168,7 @@ function byUsage(a: Scored, b: Scored): number {
  */
 export function suggestContents(
   index: SuggestIndex,
-  type: "income" | "expense",
+  type: SuggestType,
   typed: string,
   today: string,
   categoryId: Id | null = null,
@@ -166,6 +178,16 @@ export function suggestContents(
   const needle = normalizeForMatch(typed.trim());
   const prefix = `${type}\u0000`;
   if (needle === "") {
+    if (type === "transfer") {
+      // 振替は分類がないので、直近90日によく使った内容
+      const recent: Scored[] = [];
+      for (const [key, entry] of index.contents) {
+        if (!key.startsWith(prefix)) continue;
+        const s = scoreEntry(entry, cutoff, null);
+        if (s.count > 0) recent.push(s);
+      }
+      return recent.sort(byUsage).slice(0, limit).map((s) => s.content);
+    }
     if (categoryId === null) return [];
     const list: Scored[] = [];
     for (const [key, entry] of index.contents) {
@@ -187,14 +209,17 @@ export function suggestContents(
 }
 
 /** その内容で前回（いちばん新しい日付、同じ日なら作成が新しいもの）入力した分類・資産・タグ */
-export function lastUsageOf(index: SuggestIndex, type: "income" | "expense", content: string) {
+export function lastUsageOf(index: SuggestIndex, type: SuggestType, content: string) {
   const entry = index.contents.get(contentKey(type, content.trim()));
   if (!entry) return null;
   let best: UseRecord | null = null;
   for (const r of entry.records) {
     if (best === null || r.date > best.date || (r.date === best.date && r.createdAt > best.createdAt)) best = r;
   }
-  return best === null ? null : { categoryId: best.categoryId, accountId: best.accountId, tag: best.tag };
+  if (best === null) return null;
+  const usage: { categoryId?: Id; accountId: Id; toAccountId?: Id; tag?: Tag } = { categoryId: best.categoryId, accountId: best.accountId, tag: best.tag };
+  if (best.toAccountId !== undefined) usage.toAccountId = best.toAccountId; // 振替だけ
+  return usage;
 }
 
 // ---- メモの語の候補 ----

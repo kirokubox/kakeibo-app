@@ -64,6 +64,7 @@ export function sampleData(): DataSet {
     tx("t1", { tag: "daily", reimbursement: { counterparty: "テスト太郎", amount: 100 } }),
     transfer("t2"),
     tx("t3", { deletedAt: T1, updatedAt: T1 }),
+    tx("t4", { type: "income", amount: 100, settles: { txId: "t1" } }),
   ];
   const template = { type: "expense" as const, amount: 3000, accountId: "a1", categoryId: "c1", content: "テスト定期", memo: "" };
   d.recurrings = [{ id: "r1", createdAt: T0, updatedAt: T0, deletedAt: null, template, rule: { every: "month", day: "last" }, startDate: "2026-10-01", holidayShift: "before", estimated: false }];

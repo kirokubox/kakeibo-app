@@ -479,3 +479,57 @@ button.entry-row:active { background: var(--kb-surface-2); }
 .year-nav { margin-bottom: var(--kb-space-2); }
 .toast { display: flex; align-items: center; gap: var(--kb-space-3); }
 .toast-action { flex: none; min-height: 32px; padding: 0 var(--kb-space-2); border: 0; background: transparent; color: #c9ccf5; font-weight: 700; font-size: var(--kb-fs-m); }
+
+/* ---- 段階4：振替・立替・残高修正・資産の明細 ---- */
+.tx-sub { color: var(--kb-text-3); font-size: 0.6875rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tx-balance { color: var(--kb-text-2); font-size: 0.6875rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tx-balance.neg { color: var(--kb-danger); }
+
+/* 振替の入力：出金と入金の行の右端に入れ替えボタン */
+.transfer-pair { display: flex; align-items: stretch; border-top: 1px solid var(--kb-line); }
+.pair-rows { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pair-rows > .entry-row:first-child { border-top: 0; }
+.swap-btn {
+  flex: none; width: 56px; border: 0; border-left: 1px solid var(--kb-line); background: transparent; color: var(--kb-accent-strong);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.swap-btn:active { background: var(--kb-accent-soft); }
+.split-row { padding: 0; gap: 0; }
+.entry-hit {
+  flex: 1; min-width: 0; align-self: stretch; display: flex; align-items: center; gap: var(--kb-space-3); min-height: 52px; padding: 0 var(--kb-space-4);
+  border: 0; background: transparent; text-align: left; font-size: var(--kb-fs-m); color: var(--kb-text);
+}
+.entry-hit:active { background: var(--kb-surface-2); }
+.fee-btn {
+  flex: none; align-self: center; min-height: 36px; margin-right: var(--kb-space-3); padding: 0 var(--kb-space-3); border: 0; border-radius: var(--kb-radius-pill);
+  background: var(--kb-surface-2); color: var(--kb-text-2); font-size: var(--kb-fs-s); font-weight: 600;
+}
+.fee-btn.on { background: var(--kb-accent-soft); color: var(--kb-accent-strong); }
+.fee-line {
+  display: flex; align-items: center; justify-content: space-between; min-height: 36px; padding: 0 var(--kb-space-4); border-top: 1px solid var(--kb-line);
+  color: var(--kb-text-2); font-size: var(--kb-fs-s); font-variant-numeric: tabular-nums;
+}
+.pick:disabled { opacity: 0.35; cursor: default; }
+.pick.dim:active { background: var(--kb-surface-2); }
+
+.settle-label { width: auto; white-space: nowrap; }
+.settle-rest { margin-left: var(--kb-space-1); color: var(--kb-text-2); font-size: var(--kb-fs-s); }
+.settle-over { color: var(--kb-warning); background: var(--kb-warning-soft); margin: 0; padding-top: var(--kb-space-2); }
+.sheet-actions.between { justify-content: space-between; }
+.chip-item { list-style: none; }
+ul.chips { margin: 0; padding: 0; list-style: none; }
+
+.adjust-app { margin: 0; font-size: var(--kb-fs-m); }
+.adjust-diff { margin: 0; font-size: var(--kb-fs-m); font-weight: 700; color: var(--kb-text-2); }
+.adjust-diff.plus { color: var(--kb-income); }
+.adjust-diff.minus { color: var(--kb-expense); }
+
+.account-head { flex: none; }
+.account-unpaid { margin: 0 !important; color: var(--kb-danger); font-weight: 700; }
+.account-month { flex: none; display: flex; flex-direction: column; gap: var(--kb-space-2); }
+.month-head { margin: var(--kb-space-2) 0 0; font-size: var(--kb-fs-m); color: var(--kb-text-2); }
+.more-row { flex: none; display: flex; justify-content: center; padding: var(--kb-space-2) 0; }
+.outstanding-row strong { margin-left: var(--kb-space-2); color: var(--kb-text); }
+.outstanding-groups { display: flex; flex-direction: column; gap: var(--kb-space-3); }
+.sheet .outstanding-group { padding: var(--kb-space-1) 0; background: var(--kb-surface-2); }
+.content > .link-row, .content > .card { flex: none; }

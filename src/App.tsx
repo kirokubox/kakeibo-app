@@ -38,6 +38,7 @@ export default function App() {
   const today = todayKey();
   const bump = useCallback(() => setDataVersion((v) => v + 1), []);
   const openNew = useCallback((date: string) => setEntry({ kind: "new", date }), []);
+  const openEntry = useCallback((mode: EntryMode) => setEntry(mode), []);
   const openEdit = useCallback((tx: Transaction) => setEntry({ kind: "edit", tx }), []);
 
   useEffect(() => {
@@ -72,7 +73,7 @@ export default function App() {
   const entryOverlay = entry && (
     <div className="screen-overlay">
       <EntryView
-        key={entry.kind === "new" ? `new-${entry.date}` : `${entry.kind}-${entry.tx.id}`}
+        key={entry.kind === "new" ? `new-${entry.date}-${entry.transfer ? "t" : ""}` : `${entry.kind}-${entry.tx.id}`}
         mode={entry}
         today={today}
         showToast={showToast}
@@ -98,12 +99,25 @@ export default function App() {
 
   const tabBar = <TabBar current={tab} onSelect={setTab} />;
 
-  if (tab === "assets") return <AssetsView tabBar={tabBar} onOpenSettings={() => setShowSettings(true)} />;
+  if (tab === "assets") {
+    return (
+      <AssetsView
+        tabBar={tabBar}
+        today={today}
+        version={dataVersion}
+        onOpenSettings={() => setShowSettings(true)}
+        onEdit={openEdit}
+        onOpenEntry={openEntry}
+        overlay={entryOverlay}
+        onChanged={bump}
+      />
+    );
+  }
 
   if (tab === "entries") {
     return (
       <div className="app">
-        <EntriesView tabBar={tabBar} today={today} version={dataVersion} onOpenSettings={() => setShowSettings(true)} onAdd={openNew} onEdit={openEdit} />
+        <EntriesView tabBar={tabBar} today={today} version={dataVersion} onOpenSettings={() => setShowSettings(true)} onAdd={openNew} onEdit={openEdit} onChanged={bump} />
         {entryOverlay}
         {toast}
       </div>

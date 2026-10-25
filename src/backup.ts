@@ -116,6 +116,7 @@ function checkTemplate(t: unknown, at: string): string | null {
     reqStr(t, "memo", at),
     opt(t, "tag", at, (x) => oneOf(x, TAGS), "daily / satisfied / regret のどれか"),
     checkReimbursement(t, at),
+    checkSettles(t, at),
     opt(t, "reserveId", at, isNonEmptyStr, "文字列"),
     opt(t, "estimated", at, isBool, "true/false"),
     opt(t, "reconciledStatementId", at, isNonEmptyStr, "文字列"),
@@ -130,6 +131,14 @@ function checkReimbursement(t: Rec, at: string): string | null {
   if (!isRecord(r)) return `${at}.reimbursement がオブジェクトではありません`;
   const p = `${at}.reimbursement`;
   return first(reqStr(r, "counterparty", p), reqYen(r, "amount", p), opt(r, "settledTxId", p, isNonEmptyStr, "文字列"));
+}
+
+/** 返金の収入が指す立替：{ txId: 文字列 } */
+function checkSettles(t: Rec, at: string): string | null {
+  const s = t.settles;
+  if (s === undefined) return null;
+  if (!isRecord(s)) return `${at}.settles がオブジェクトではありません`;
+  return reqId(s, "txId", `${at}.settles`);
 }
 
 const checkAccount: Check = (v, at) => {
@@ -176,6 +185,7 @@ const checkTransaction: Check = (v, at) =>
     reqStr(v, "memo", at),
     opt(v, "tag", at, (x) => oneOf(x, TAGS), "daily / satisfied / regret のどれか"),
     checkReimbursement(v, at),
+    checkSettles(v, at),
     opt(v, "reserveId", at, isNonEmptyStr, "文字列"),
     opt(v, "estimated", at, isBool, "true/false"),
     opt(v, "reconciledStatementId", at, isNonEmptyStr, "文字列"),

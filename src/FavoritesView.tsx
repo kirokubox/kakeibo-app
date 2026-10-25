@@ -103,13 +103,16 @@ export function FavoritesView({ accounts, categories, onPick, onClose, showToast
                 const problems = callable ? favoriteProblems(t, accounts, categories) : { account: false, category: false };
                 const n = categoryNames(categories, t.categoryId);
                 const account = accounts.find((a) => a.id === t.accountId);
+                const toAccount = accounts.find((a) => a.id === t.toAccountId);
+                const accountText =
+                  t.type === "transfer" ? `${account ? account.name : "資産なし"} → ${toAccount ? toAccount.name : "資産なし"}` : account ? account.name : "資産なし";
                 const body = (
                   <>
                     <span className="badge">{TYPE_LABELS[t.type]}</span>
                     <span className="list-main">
                       <span className="list-sub">{n ? (n.child ? `${n.parent}/${n.child}` : n.parent) : t.type === "transfer" ? "振替" : "分類なし"}</span>
                       <span className="list-name">{t.content || "（内容なし）"}</span>
-                      <span className="list-sub">{account ? account.name : "資産なし"}</span>
+                      <span className="list-sub">{accountText}</span>
                       {problems.account && <span className="list-sub warn">資産を選び直してください</span>}
                       {problems.category && <span className="list-sub warn">分類を選び直してください</span>}
                     </span>
@@ -152,7 +155,7 @@ export function FavoritesView({ accounts, categories, onPick, onClose, showToast
             </ul>
           </section>
         )}
-        {list.some((f) => !isFavoriteCallable(f.template)) && <p className="muted small">薄く表示している振替は、段階4から呼び出せます。</p>}
+        {list.some((f) => !isFavoriteCallable(f.template)) && <p className="muted small">薄く表示しているものは、呼び出せません。</p>}
       </main>
       {confirmId && (
         <ConfirmSheet

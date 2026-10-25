@@ -3,6 +3,8 @@ import type { PadKey } from "./calculator";
 import { PanelFrame } from "./PanelFrame";
 
 interface Props {
+  /** パネルの見出し（振替の手数料では「手数料」）。省略は「金額」 */
+  title?: string;
   expr: string;
   onKey: (key: PadKey) => void;
   onFinish: () => void;
@@ -17,11 +19,11 @@ const LAYOUT: Array<Array<{ key: PadKey; label: string; kind?: "op" | "back" }>>
 ];
 
 /** 金額のテンキー（電卓つき）。式は金額の行に出すので、ここにはキーだけ */
-export function AmountPad({ expr, onKey, onFinish, onClose }: Props) {
+export function AmountPad({ title = "金額", expr, onKey, onFinish, onClose }: Props) {
   const finishable = canFinish(expr);
   const calc = hasOperator(expr);
   return (
-    <PanelFrame title="金額" onClose={onClose}>
+    <PanelFrame title={title} onClose={onClose}>
       <div className="pad-grid">
         {LAYOUT.flat().map((k) => (
           <button

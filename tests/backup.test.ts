@@ -132,6 +132,28 @@ test("同じストアの中でIDが重複しているファイルは拒否", () 
   assert.match(reason(b), /重複/);
 });
 
+test("返金が指す立替（settles）の検証：文字列のidだけ通し、壊れた形は拒否", () => {
+  const ok: Any = viaJson(sampleBackup());
+  assert.equal(ok.transactions[3].settles.txId, "t1");
+  assert.equal(validateBackup(ok).ok, true);
+  const checks: Array<[string, (b: Any) => void]> = [
+    ["txId が数値", (b) => { b.transactions[3].settles = { txId: 5 }; }],
+    ["txId が空", (b) => { b.transactions[3].settles = { txId: "" }; }],
+    ["txId が無い", (b) => { b.transactions[3].settles = {}; }],
+    ["settles が文字列", (b) => { b.transactions[3].settles = "t1"; }],
+    ["settles が配列でない形でnull", (b) => { b.transactions[3].settles = null; }],
+  ];
+  for (const [label, mutate] of checks) {
+    const b: Any = viaJson(sampleBackup());
+    mutate(b);
+    assert.match(reason(b), /transactions\[3\]\.settles/, label);
+  }
+  // よく使う入力・繰り返しのひな形でも、壊れた settles は拒否
+  const t: Any = viaJson(sampleBackup());
+  t.favorites[0].template.settles = { txId: 1 };
+  assert.match(reason(t), /favorites\[0\]\.template\.settles/);
+});
+
 test("オプション項目が無くても通る", () => {
   const d = sampleData();
   const b = viaJson(buildBackup(d, defaultSettings(), "2026-10-25T09:00:00.000Z")) as Any;

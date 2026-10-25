@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { AdjustSheet } from "./AdjustSheet";
 import { BottomSheet } from "./BottomSheet";
 import { CalendarMonth } from "./CalendarMonth";
 import { DayGroup } from "./DayGroup";
-import { addDays, formatDateJa } from "./dateUtils";
+import { addDays } from "./dateUtils";
 import { Fab } from "./Fab";
+import { computeAllocation } from "./reimburseLogic";
+import { getReimburseSet } from "./reimburseStore";
+import { useToast } from "./Toast";
 import { Icon } from "./Icon";
 import { PREF_ENTRIES_MODE, readPref, writePref } from "./localPrefs";
 import { formatYen } from "./money";
@@ -26,12 +30,10 @@ import {
 } from "./periodLogic";
 import { getAll, getTransactionsInRange } from "./storage";
 import type { Account, Category, Transaction } from "./types";
-import { categoryNames } from "./entryLogic";
 
 type ViewMode = "day" | "week" | "month";
 
 const MODE_LABELS: Record<ViewMode, string> = { day: "日別", week: "週別", month: "月別" };
-const TYPE_LABELS = { income: "収入", expense: "支出", transfer: "振替", adjustment: "残高修正" } as const;
 
 interface Props {
   tabBar: ReactNode;
@@ -41,6 +43,8 @@ interface Props {
   onOpenSettings: () => void;
   onAdd: (date: string) => void;
   onEdit: (tx: Transaction) => void;
+  /** 残高修正を保存・削除したあと */
+  onChanged: () => void;
 }
 
 function readMode(): ViewMode {
@@ -49,7 +53,7 @@ function readMode(): ViewMode {
 }
 
 /** 明細タブ：日別（カレンダー）・週別・月別 */
-export function EntriesView({ tabBar, today, version, onOpenSettings, onAdd, onEdit }: Props) {
+export function EntriesView({ tabBar, today, version, onOpenSettings, onAdd, onEdit, onChanged }: Props) {
   const [mode, setMode] = useState<ViewMode>(readMode);
   const [month, setMonth] = useState(() => monthKeyOf(today));
   const [selectedDay, setSelectedDay] = useState(today);
@@ -60,7 +64,9 @@ export function EntriesView({ tabBar, today, version, onOpenSettings, onAdd, onE
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [picker, setPicker] = useState(false);
-  const [viewing, setViewing] = useState<Transaction | null>(null);
+  const [adjusting, setAdjusting] = useState<Transaction | null>(null);
+  const [reimburse, setReimburse] = useState<Transaction[]>([]);
+  const [toast, showToast] = useToast();
   const seq = useRef(0);
 
   // 表示中の期間（＋前後の週）だけを date の索引で読む
@@ -74,9 +80,10 @@ export function EntriesView({ tabBar, today, version, onOpenSettings, onAdd, onE
     const my = ++seq.current;
     (async () => {
       try {
-        const [t, a, c] = await Promise.all([getTransactionsInRange(range.start, range.end), getAll("accounts"), getAll("categories")]);
+        const [t, a, c, r] = await Promise.all([getTransactionsInRange(range.start, range.end), getAll("accounts"), getAll("categories"), getReimburseSet()]);
         if (my !== seq.current) return;
         setTxs(t.filter((x) => x.deletedAt === null));
+        setReimburse(r);
         setAccounts(a);
         setCategories(c);
         setLoadError("");
@@ -108,34 +115,18 @@ export function EntriesView({ tabBar, today, version, onOpenSettings, onAdd, onE
   const monthRangeNow = monthRange(month);
   const weekRangeNow = weekRange(weekStart);
   const period = mode === "week" ? weekRangeNow : monthRangeNow;
-  const totals = useMemo(() => summarize(txs, period), [txs, period]);
-  const cells = useMemo(() => (mode === "day" ? calendarCells(month, txs) : []), [mode, month, txs]);
-  const dayGroup = useMemo(() => (mode === "day" ? groupByDay(txs, { start: selectedDay, end: selectedDay })[0] : undefined), [mode, txs, selectedDay]);
-  const groups = useMemo(() => (mode === "day" ? [] : groupByDay(txs, period)), [mode, txs, period]);
-  const bars = useMemo(() => (mode === "week" ? weekExpenseBars(txs, weekStart) : []), [mode, txs, weekStart]);
+  // 返金に充てた額（期間の外の立替・返金も見るので、立替・返金の集まりから計算する）
+  const applied = useMemo(() => computeAllocation(reimburse).applied, [reimburse]);
+  const totals = useMemo(() => summarize(txs, period, applied), [txs, period, applied]);
+  const cells = useMemo(() => (mode === "day" ? calendarCells(month, txs, applied) : []), [mode, month, txs, applied]);
+  const dayGroup = useMemo(() => (mode === "day" ? groupByDay(txs, { start: selectedDay, end: selectedDay }, applied)[0] : undefined), [mode, txs, selectedDay, applied]);
+  const groups = useMemo(() => (mode === "day" ? [] : groupByDay(txs, period, applied)), [mode, txs, period, applied]);
+  const bars = useMemo(() => (mode === "week" ? weekExpenseBars(txs, weekStart, applied) : []), [mode, txs, weekStart, applied]);
   const barMax = Math.max(1, ...bars.map((b) => b.expense));
 
   const select = (tx: Transaction) => {
-    if (tx.type === "income" || tx.type === "expense") onEdit(tx);
-    else setViewing(tx);
-  };
-
-  const rowsFor = (tx: Transaction): Array<[string, string]> => {
-    const names = categoryNames(categories, tx.categoryId);
-    const rows: Array<[string, string]> = [
-      ["日付", formatDateJa(tx.date)],
-      ["種類", TYPE_LABELS[tx.type]],
-      ["金額", tx.type === "adjustment" && tx.amount > 0 ? `＋${formatYen(tx.amount)}` : formatYen(tx.amount)],
-      [tx.type === "transfer" ? "出す資産" : "資産", accountNames.get(tx.accountId) ?? "資産不明"],
-    ];
-    if (tx.type === "transfer") {
-      rows.push(["入れる資産", accountNames.get(tx.toAccountId ?? "") ?? "資産不明"]);
-      if (tx.fee) rows.push(["手数料", formatYen(tx.fee)]);
-    }
-    if (names) rows.push(["分類", names.child ? `${names.parent}＞${names.child}` : names.parent]);
-    if (tx.content) rows.push(["内容", tx.content]);
-    if (tx.memo) rows.push(["メモ", tx.memo]);
-    return rows;
+    if (tx.type === "adjustment") setAdjusting(tx);
+    else onEdit(tx);
   };
 
   const title = mode === "week" ? weekTitle(weekStart) : monthTitle(month);
@@ -237,24 +228,17 @@ export function EntriesView({ tabBar, today, version, onOpenSettings, onAdd, onE
       {tabBar}
 
       {picker && <MonthPicker current={month} onPick={(m) => { goMonth(m); setPicker(false); }} onClose={() => setPicker(false)} />}
-      {viewing && (
-        <BottomSheet title={TYPE_LABELS[viewing.type]} onClose={() => setViewing(null)}>
-          <dl className="rows">
-            {rowsFor(viewing).map(([k, v]) => (
-              <div key={k} className="row">
-                <dt>{k}</dt>
-                <dd>{v}</dd>
-              </div>
-            ))}
-          </dl>
-          <p className="muted small">{viewing.type === "transfer" ? "振替" : "残高修正"}の編集は段階4で使えます。</p>
-          <div className="sheet-actions">
-            <button type="button" className="secondary-btn" onClick={() => setViewing(null)}>
-              閉じる
-            </button>
-          </div>
-        </BottomSheet>
+      {adjusting && accounts.find((a) => a.id === adjusting.accountId) && (
+        <AdjustSheet
+          account={accounts.find((a) => a.id === adjusting.accountId)!}
+          mode={{ kind: "edit", tx: adjusting }}
+          today={today}
+          showToast={showToast}
+          onChanged={onChanged}
+          onClose={() => setAdjusting(null)}
+        />
       )}
+      {toast}
     </>
   );
 }

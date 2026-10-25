@@ -27,6 +27,9 @@
     "src/entryLogic.ts",
     "src/suggestLogic.ts",
     "src/periodLogic.ts",
+    "src/transferLogic.ts",
+    "src/reimburseLogic.ts",
+    "src/adjustLogic.ts",
     "tests/fixtures.ts",
     "tests/dateUtils.test.ts",
     "tests/money.test.ts",
@@ -39,6 +42,9 @@
     "tests/calculator.test.ts",
     "tests/periodLogic.test.ts",
     "tests/entryLogic.test.ts",
-    "tests/suggestLogic.test.ts"
+    "tests/suggestLogic.test.ts",
+    "tests/transferLogic.test.ts",
+    "tests/reimburseLogic.test.ts",
+    "tests/adjustLogic.test.ts"
   ]
 }

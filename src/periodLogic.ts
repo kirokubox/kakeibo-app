@@ -1,6 +1,20 @@
 // 期間（暦月・月曜始まりの週）と、明細の集計（画面から切り離した純粋なロジック）
 import { addDays, weekdayOf } from "./dateUtils.js";
-import type { Transaction } from "./types.js";
+import { reimbAmountOf } from "./reimburseLogic.js";
+import type { Id, Transaction } from "./types.js";
+
+/** 返金（収入）のid → 立替に充てた額。期間の合計から除く（reimburseLogic の computeAllocation の applied） */
+export type AppliedReturns = ReadonlyMap<Id, number>;
+
+/** 期間の合計に数える収入の額：返金は、立替に充てた額を除く（多い分だけ収入） */
+export function countedIncome(t: Transaction, applied?: AppliedReturns): number {
+  return t.amount - (t.settles ? (applied?.get(t.id) ?? 0) : 0);
+}
+
+/** 期間の合計に数える支出の額：立替のある支出は、立替の金額を除く */
+export function countedExpense(t: Transaction): number {
+  return t.amount - reimbAmountOf(t);
+}
 
 export interface DateRange {
   start: string; // YYYY-MM-DD（含む）
@@ -57,15 +71,15 @@ export interface PeriodTotals {
   total: number; // 収入 − 支出
 }
 
-/** 収入・支出・合計。論理削除済み、振替、残高修正は含めない */
-export function summarize(transactions: readonly Transaction[], range?: DateRange): PeriodTotals {
+/** 収入・支出・合計。論理削除済み、振替、残高修正は含めない。立替分と、返金に充てた額は除く（残高は変えない） */
+export function summarize(transactions: readonly Transaction[], range?: DateRange, applied?: AppliedReturns): PeriodTotals {
   let income = 0;
   let expense = 0;
   for (const t of transactions) {
     if (t.deletedAt !== null) continue;
     if (range && !inRange(t.date, range)) continue;
-    if (t.type === "income") income += t.amount;
-    else if (t.type === "expense") expense += t.amount;
+    if (t.type === "income") income += countedIncome(t, applied);
+    else if (t.type === "expense") expense += countedExpense(t);
   }
   return { income, expense, total: income - expense };
 }
@@ -78,7 +92,7 @@ export interface DayGroup {
 }
 
 /** 日ごとのまとまり（新しい日から）。論理削除済みは除く。振替・残高修正は行に入るが、日の収入・支出には入れない */
-export function groupByDay(transactions: readonly Transaction[], range?: DateRange): DayGroup[] {
+export function groupByDay(transactions: readonly Transaction[], range?: DateRange, applied?: AppliedReturns): DayGroup[] {
   const map = new Map<string, DayGroup>();
   for (const t of transactions) {
     if (t.deletedAt !== null) continue;
@@ -89,8 +103,8 @@ export function groupByDay(transactions: readonly Transaction[], range?: DateRan
       map.set(t.date, g);
     }
     g.items.push(t);
-    if (t.type === "income") g.income += t.amount;
-    else if (t.type === "expense") g.expense += t.amount;
+    if (t.type === "income") g.income += countedIncome(t, applied);
+    else if (t.type === "expense") g.expense += countedExpense(t);
   }
   const groups = [...map.values()];
   for (const g of groups) g.items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id < b.id ? 1 : -1));
@@ -106,13 +120,13 @@ export interface CalendarCell {
 }
 
 /** 月のカレンダーのマス（月曜始まり。前後の月の日も入れる）。4〜6週分 */
-export function calendarCells(month: string, transactions: readonly Transaction[]): CalendarCell[] {
+export function calendarCells(month: string, transactions: readonly Transaction[], applied?: AppliedReturns): CalendarCell[] {
   const range = monthRange(month);
   const first = weekStartOf(range.start);
   const lastWeekStart = weekStartOf(range.end);
   const end = addDays(lastWeekStart, 6);
   const byDate = new Map<string, DayGroup>();
-  for (const g of groupByDay(transactions)) byDate.set(g.date, g);
+  for (const g of groupByDay(transactions, undefined, applied)) byDate.set(g.date, g);
   const cells: CalendarCell[] = [];
   for (let d = first; d <= end; d = addDays(d, 1)) {
     const g = byDate.get(d);
@@ -122,8 +136,8 @@ export function calendarCells(month: string, transactions: readonly Transaction[
 }
 
 /** 週の7日分の支出（月曜から）。棒グラフ用 */
-export function weekExpenseBars(transactions: readonly Transaction[], weekStart: string): Array<{ date: string; expense: number }> {
-  const days = groupByDay(transactions);
+export function weekExpenseBars(transactions: readonly Transaction[], weekStart: string, applied?: AppliedReturns): Array<{ date: string; expense: number }> {
+  const days = groupByDay(transactions, undefined, applied);
   const byDate = new Map(days.map((g) => [g.date, g.expense]));
   return Array.from({ length: 7 }, (_, i) => {
     const date = addDays(weekStart, i);

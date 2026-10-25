@@ -217,10 +217,13 @@ test("よく使う入力：削除・非表示の資産や分類が含まれる�
   assert.equal(missing.focus, "account");
 });
 
-test("よく使う入力：振替のひな形は呼び出せない。並びは末尾に足す", () => {
+test("よく使う入力：振替のひな形は段階4から呼び出せる（収入・支出の呼び出しは対象外）。並びは末尾に足す", () => {
   const transferTpl = { type: "transfer" as const, amount: 1000, accountId: "a1", toAccountId: "a2", content: "", memo: "" };
-  assert.equal(isFavoriteCallable(transferTpl), false);
-  assert.equal(recallFavorite(transferTpl, draft(), accounts, categories), null);
+  assert.equal(isFavoriteCallable(transferTpl), true);
+  assert.equal(isFavoriteCallable({ ...transferTpl, type: "adjustment" }), false);
+  assert.equal(recallFavorite(transferTpl, draft(), accounts, categories), null); // 振替は transferLogic の recallTransferFavorite で呼び出す
+  assert.deepEqual(favoriteProblems(transferTpl, accounts, categories), { account: false, category: false });
+  assert.deepEqual(favoriteProblems({ ...transferTpl, toAccountId: "gone" }, accounts, categories), { account: true, category: false });
   const favs = [
     { id: "f1", createdAt: T0, updatedAt: T0, deletedAt: null, template: transferTpl, order: 0 },
     { id: "f2", createdAt: T0, updatedAt: T0, deletedAt: null, template: transferTpl, order: 4 },

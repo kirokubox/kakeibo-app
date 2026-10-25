@@ -50,6 +50,25 @@ export function computeBalances(accounts: readonly Account[], transactions: read
   return balances;
 }
 
+/** 1件の取引が、1つの資産の残高を動かす額（計算は computeBalances と同じ。論理削除済みも計算に入れるので呼び出し側で除く） */
+export function txEffect(accountId: Id, t: Transaction): number {
+  let delta = 0;
+  switch (t.type) {
+    case "income":
+    case "adjustment":
+      if (t.accountId === accountId) delta += t.amount;
+      break;
+    case "expense":
+      if (t.accountId === accountId) delta -= t.amount;
+      break;
+    case "transfer":
+      if (t.accountId === accountId) delta -= t.amount + (t.fee ?? 0);
+      if (t.toAccountId === accountId) delta += t.amount;
+      break;
+  }
+  return delta;
+}
+
 export interface AccountTotals {
   usable: number; // 使える資産（含める資産の残高合計。カードの未払いはマイナスで入る）
   assets: number; // プラスの残高の合計

@@ -6,7 +6,7 @@ import { isYen } from "./money.js";
 import { byOrder } from "./orderUtils.js";
 import type { Account, Base, Category, CategoryKind, Favorite, Id, Tag, Transaction, TransactionTemplate, TxSource, TxType } from "./types.js";
 
-/** 入力画面で扱う種類（振替・残高修正は段階4） */
+/** 入力画面の収入・支出で扱う種類（振替は transferLogic の TransferDraft で扱う） */
 export type EntryType = "income" | "expense";
 
 export interface EntryDraft {
@@ -181,6 +181,9 @@ export function draftToTransaction(draft: EntryDraft, categories: readonly Categ
   if (tag === null) delete t.tag;
   else t.tag = tag;
   if (t.categoryId === undefined) delete t.categoryId;
+  // 振替から種類を替えたときに、振替だけの項目を残さない
+  delete t.toAccountId;
+  delete t.fee;
   return t;
 }
 
@@ -205,9 +208,9 @@ export function nextFavoriteOrder(favorites: readonly Favorite[]): number {
   return orders.length === 0 ? 0 : Math.max(...orders) + 1;
 }
 
-/** 一覧から呼び出せるか（振替のひな形は段階4まで押せない） */
+/** 一覧から呼び出せるか（収入・支出・振替。残高修正のひな形はない） */
 export function isFavoriteCallable(template: TransactionTemplate): boolean {
-  return isEntryType(template.type);
+  return isEntryType(template.type) || template.type === "transfer";
 }
 
 /** ひな形の資産・分類が、いま選べない状態か */
@@ -217,6 +220,10 @@ export function favoriteProblems(
   categories: readonly Category[],
 ): { account: boolean; category: boolean } {
   const type = isEntryType(template.type) ? template.type : "expense";
+  if (template.type === "transfer") {
+    // 振替は分類がない。出金か入金のどちらかが選べないときは「資産を選び直してください」
+    return { account: !isAccountSelectable(accounts, template.accountId) || !isAccountSelectable(accounts, template.toAccountId), category: false };
+  }
   return {
     account: !isAccountSelectable(accounts, template.accountId),
     category: !isCategorySelectable(categories, template.categoryId, kindOf(type)),
