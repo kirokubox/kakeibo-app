@@ -1,12 +1,12 @@
 {
   "name": "kakeibo-app",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
-    "test": "tsc -p tsconfig.test.json && node --test .test-build/tests/dateUtils.test.js .test-build/tests/money.test.js .test-build/tests/seedCategories.test.js .test-build/tests/backup.test.js .test-build/tests/importPreview.test.js .test-build/tests/accountLogic.test.js .test-build/tests/categoryLogic.test.js .test-build/tests/settingsLogic.test.js",
+    "test": "tsc -p tsconfig.test.json && node --test .test-build/tests/dateUtils.test.js .test-build/tests/money.test.js .test-build/tests/seedCategories.test.js .test-build/tests/backup.test.js .test-build/tests/importPreview.test.js .test-build/tests/accountLogic.test.js .test-build/tests/categoryLogic.test.js .test-build/tests/settingsLogic.test.js .test-build/tests/calculator.test.js .test-build/tests/periodLogic.test.js .test-build/tests/entryLogic.test.js .test-build/tests/suggestLogic.test.js",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

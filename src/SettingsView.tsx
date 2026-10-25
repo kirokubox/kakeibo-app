@@ -9,6 +9,7 @@ import { downloadTextFile } from "./fileUtils";
 import { Icon } from "./Icon";
 import { indexExisting, planImport, recordsToWrite, totalsOf } from "./importPreview";
 import type { ImportPlan } from "./importPreview";
+import { resetSuggestIndex } from "./suggestStore";
 import { formatYen } from "./money";
 import { NumberSheet } from "./NumberSheet";
 import { validateDefenseFund, validatePayday, validateReminderDays } from "./settingsLogic";
@@ -135,6 +136,7 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
     try {
       const records = recordsToWrite(preview.plan, { add: doAdd, update: doUpdate });
       await writeImported(records);
+      resetSuggestIndex(); // 内容・メモの候補の集計は、次に使うとき作り直す
       const t = totalsOf(preview.plan);
       const added = doAdd ? t.add : 0;
       const updated = doUpdate ? t.update : 0;

@@ -23,6 +23,10 @@
     "src/settingsLogic.ts",
     "src/accountLogic.ts",
     "src/categoryLogic.ts",
+    "src/calculator.ts",
+    "src/entryLogic.ts",
+    "src/suggestLogic.ts",
+    "src/periodLogic.ts",
     "tests/fixtures.ts",
     "tests/dateUtils.test.ts",
     "tests/money.test.ts",
@@ -31,6 +35,10 @@
     "tests/importPreview.test.ts",
     "tests/accountLogic.test.ts",
     "tests/categoryLogic.test.ts",
-    "tests/settingsLogic.test.ts"
+    "tests/settingsLogic.test.ts",
+    "tests/calculator.test.ts",
+    "tests/periodLogic.test.ts",
+    "tests/entryLogic.test.ts",
+    "tests/suggestLogic.test.ts"
   ]
 }

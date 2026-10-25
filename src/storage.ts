@@ -3,7 +3,7 @@ import { DB_NAME, DB_VERSION, SETTINGS_KEY, SETTINGS_STORE, TRANSACTION_INDEXES,
 import { nowIso } from "./dateUtils.js";
 import { buildSeedCategories } from "./seedCategories.js";
 import { DATA_STORE_NAMES } from "./types.js";
-import type { BackupFile, Base, DataSet, DataStoreName, DataStoreRecords, Settings } from "./types.js";
+import type { BackupFile, Base, DataSet, DataStoreName, DataStoreRecords, Settings, Transaction } from "./types.js";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -84,6 +84,16 @@ export async function getAll<K extends DataStoreName>(store: K): Promise<DataSto
   const db = await openDb();
   const tx = db.transaction(store, "readonly");
   return request(tx.objectStore(store).getAll() as IDBRequest<DataStoreRecords[K][]>);
+}
+
+/**
+ * 期間（start〜end、両端を含む）の取引を date の索引で読む（論理削除したものも含むので、画面側で activeOnly する）。
+ * 約1万3千件を毎回全部読まないための読み方。
+ */
+export async function getTransactionsInRange(start: string, end: string): Promise<Transaction[]> {
+  const db = await openDb();
+  const tx = db.transaction("transactions", "readonly");
+  return request(tx.objectStore("transactions").index("date").getAll(IDBKeyRange.bound(start, end)) as IDBRequest<Transaction[]>);
 }
 
 /** 書き込み。書くたびに updatedAt を現在時刻にする（将来の同期に備える） */

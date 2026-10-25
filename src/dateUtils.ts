@@ -61,3 +61,21 @@ export function formatDateTimeJa(iso: string, today: Date = new Date()): string 
   if (Number.isNaN(t.getTime())) return iso;
   return `${formatDateJa(toDateKey(t), today)} ${pad(t.getHours())}:${pad(t.getMinutes())}`;
 }
+
+/** 暦日に日数を足す（負で引く）。端末のタイムゾーンに左右されない */
+export function addDays(key: string, days: number): string {
+  const [y, m, d] = key.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d + days));
+  return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`;
+}
+
+/** 曜日（0=日 … 6=土） */
+export function weekdayOf(key: string): number {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+/** 暦日の前後比較用：a が b より前なら負 */
+export function compareDates(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
