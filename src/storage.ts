@@ -139,6 +139,23 @@ export async function saveRecords<K extends DataStoreName>(store: K, records: Da
   await done(tx);
 }
 
+/**
+ * 複数のストアのレコードを1つのトランザクションで書く（明細と繰り返しを同時に保存するときなど。途中で失敗したら何も書かない）。
+ * 書くたびに updatedAt を現在時刻にする
+ */
+export async function saveStores(records: { [K in DataStoreName]?: DataStoreRecords[K][] }): Promise<void> {
+  const names = DATA_STORE_NAMES.filter((n) => (records[n]?.length ?? 0) > 0);
+  if (names.length === 0) return;
+  const now = nowIso();
+  const db = await openDb();
+  const tx = db.transaction([...names], "readwrite");
+  for (const name of names) {
+    const os = tx.objectStore(name);
+    for (const r of records[name] ?? []) os.put({ ...r, updatedAt: now });
+  }
+  await done(tx);
+}
+
 /** 論理削除。deletedAt と updatedAt に現在時刻を入れる（データ自体は消さない） */
 export async function softDelete<K extends DataStoreName>(store: K, id: string): Promise<void> {
   const db = await openDb();

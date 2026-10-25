@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AdjustSheet } from "./AdjustSheet";
 import type { AdjustMode } from "./AdjustSheet";
-import { cardNote } from "./accountLogic";
+import { cardNote, nextDebitText } from "./accountLogic";
 import { initialMonthCount, monthBlocks, runningBalances } from "./adjustLogic";
 import { DayGroup } from "./DayGroup";
 import { Icon } from "./Icon";
@@ -102,6 +102,7 @@ export function AccountDetailView({ account, accounts, balance, today, version, 
           <p className={`summary-main${balance < 0 ? " neg" : ""}`}>{formatYen(balance)}</p>
           {isCard && <p className="account-unpaid">未払い {formatYen(unpaid)}</p>}
           {note && <p className="list-sub">{note}</p>}
+          {isCard && nextDebitText(account, today) && <p className="list-sub">{nextDebitText(account, today)}</p>}
           {isCard && <p className="field-hint">請求額は、利用日から2〜3か月遅れて載るものがあります。照合は段階8で作ります。</p>}
           <div className="actions">
             <button type="button" className="secondary-btn" onClick={() => setAdjust({ kind: "new" })}>

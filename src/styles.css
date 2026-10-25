@@ -533,3 +533,39 @@ ul.chips { margin: 0; padding: 0; list-style: none; }
 .outstanding-groups { display: flex; flex-direction: column; gap: var(--kb-space-3); }
 .sheet .outstanding-group { padding: var(--kb-space-1) 0; background: var(--kb-surface-2); }
 .content > .link-row, .content > .card { flex: none; }
+
+/* ---- 段階5：繰り返し・給料明細 ---- */
+.tag-mark.estimated { background: var(--kb-warning-soft); color: var(--kb-warning); }
+.repeat-btn.on { background: var(--kb-accent-soft); color: var(--kb-accent-strong); font-weight: 700; }
+.estimated-note { display: flex; flex-direction: column; gap: var(--kb-space-2); padding: var(--kb-space-3) var(--kb-space-4); border-radius: var(--kb-radius-m); background: var(--kb-warning-soft); color: var(--kb-warning); font-size: var(--kb-fs-s); line-height: 1.5; }
+.estimated-note .check { min-height: 36px; color: var(--kb-text); }
+.payroll-note { display: flex; align-items: center; justify-content: space-between; gap: var(--kb-space-3); padding: var(--kb-space-2) var(--kb-space-4); border-radius: var(--kb-radius-m); background: var(--kb-accent-soft); color: var(--kb-accent-strong); font-size: var(--kb-fs-s); }
+.repeat-fields { display: flex; flex-direction: column; gap: var(--kb-space-3); }
+.repeat-block { display: flex; flex-direction: column; gap: var(--kb-space-2); }
+.repeat-fields .chips .chip { min-height: 40px; }
+.chip.on { background: var(--kb-accent-soft); color: var(--kb-accent-strong); font-weight: 700; }
+.day-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.day-grid .chip { padding: 0; justify-content: center; min-height: 40px; }
+.repeat-card { flex: none; background: var(--kb-surface); border-radius: var(--kb-radius-m); padding: var(--kb-space-4); }
+.date-input { min-height: 44px; padding: 0 var(--kb-space-3); border: 1px solid var(--kb-line-strong); border-radius: var(--kb-radius-s); background: var(--kb-surface); color: var(--kb-text); font-size: 1rem; }
+.sub-list .list-row { align-items: flex-start; }
+.badge.estimated { background: var(--kb-warning-soft); color: var(--kb-warning); }
+.list-group-title { margin: var(--kb-space-2) 0 0; font-size: var(--kb-fs-s); color: var(--kb-text-2); font-weight: 600; }
+.payroll-line { display: flex; flex-direction: column; gap: var(--kb-space-2); padding: var(--kb-space-3) var(--kb-space-4); border-top: 1px solid var(--kb-line); }
+.payroll-line:first-of-type { border-top: 0; }
+.payroll-line.off { opacity: 0.55; }
+.payroll-line-top { display: flex; align-items: center; gap: var(--kb-space-2); }
+.payroll-line-top .select-btn { flex: 1; min-width: 0; }
+.payroll-line-bottom { display: flex; align-items: center; gap: var(--kb-space-2); }
+.payroll-line-bottom .text-input { flex: 1; min-width: 0; }
+.payroll-line-bottom .yen-input { flex: none; width: 150px; }
+.payroll-section { padding: var(--kb-space-2) 0; }
+.payroll-section h2 { margin: 0; padding: var(--kb-space-2) var(--kb-space-4); font-size: var(--kb-fs-s); color: var(--kb-text-2); }
+.payroll-add { display: flex; justify-content: flex-start; padding: var(--kb-space-1) var(--kb-space-3); }
+.take-home { flex: none; padding: var(--kb-space-3) var(--kb-space-4); background: var(--kb-surface); border-top: 1px solid var(--kb-line-strong); font-size: var(--kb-fs-s); color: var(--kb-text-2); line-height: 1.6; }
+.take-home strong { display: block; margin-top: 2px; color: var(--kb-text); font-size: var(--kb-fs-l); font-variant-numeric: tabular-nums; }
+.payroll-screen { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--kb-bg); }
+.payroll-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--kb-space-3) var(--kb-space-4); display: flex; flex-direction: column; gap: var(--kb-space-3); }
+.payroll-body > .card, .payroll-body > .payroll-section { flex: none; }
+.line-check { flex: none; width: 22px; height: 22px; accent-color: var(--kb-accent); }
+.field-hint.repeat-summary { margin-top: var(--kb-space-3) !important; }

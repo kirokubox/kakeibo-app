@@ -162,3 +162,37 @@ test("オプション項目が無くても通る", () => {
   delete b.accounts[1].card;
   assert.equal(validateBackup(b).ok, true);
 });
+
+test("段階5で足した項目：正しい値は通り、不正な値は拒否", () => {
+  const ok: Any = viaJson(sampleBackup());
+  ok.transactions[0].payrollBatchId = "batch-1";
+  ok.recurrings[0].generatedThrough = "2026-10-31";
+  ok.recurrings.push({
+    ...ok.recurrings[0], id: "r2", rule: { every: "year", month: 10, day: 25 }, template: { ...ok.recurrings[0].template, payrollBatchId: "b" },
+  });
+  ok.recurrings.push({ ...ok.recurrings[0], id: "r3", rule: { every: "week", day: 7 } });
+  ok.recurrings.push({ ...ok.recurrings[0], id: "r4", rule: { every: "nMonths", n: 3, day: 5 } });
+  ok.payrolls[0].lastAmounts = { pl1: 201000, pl2: 20000 };
+  assert.equal(reason(ok), "");
+
+  const checks: Array<[string, (b: Any) => void, RegExp]> = [
+    ["payrollBatchId", (b) => { b.transactions[0].payrollBatchId = 5; }, /transactions\[0\]\.payrollBatchId/],
+    ["ひな形の payrollBatchId", (b) => { b.recurrings[0].template.payrollBatchId = ""; }, /template\.payrollBatchId/],
+    ["generatedThrough", (b) => { b.recurrings[0].generatedThrough = "2026-02-30"; }, /recurrings\[0\]\.generatedThrough/],
+    ["rule.month（毎年）", (b) => { b.recurrings[0].rule = { every: "year", day: 5 }; }, /rule\.month/],
+    ["rule.month の範囲", (b) => { b.recurrings[0].rule = { every: "year", month: 13, day: 5 }; }, /rule\.month/],
+    ["rule.n（◯か月ごと）", (b) => { b.recurrings[0].rule = { every: "nMonths", day: 5 }; }, /rule\.n/],
+    ["rule.day の範囲", (b) => { b.recurrings[0].rule = { every: "month", day: 32 }; }, /rule\.day/],
+    ["毎週の曜日", (b) => { b.recurrings[0].rule = { every: "week", day: 8 }; }, /rule\.day/],
+    ["lineId", (b) => { delete b.payrolls[0].lines[0].lineId; }, /payrolls\[0\]\.lines\[0\]\.lineId/],
+    ["精算の行の lineId", (b) => { b.payrolls[0].lines[2].lineId = ""; }, /lines\[2\]\.lineId/],
+    ["lastAmounts の金額", (b) => { b.payrolls[0].lastAmounts = { pl1: 1.5 }; }, /lastAmounts\.pl1/],
+    ["lastAmounts の型", (b) => { b.payrolls[0].lastAmounts = [1]; }, /lastAmounts/],
+    ["支給日", (b) => { b.payrolls[0].day = 0; }, /payrolls\[0\]\.day/],
+  ];
+  for (const [label, mutate, re] of checks) {
+    const b: Any = viaJson(sampleBackup());
+    mutate(b);
+    assert.match(reason(b), re, label);
+  }
+});

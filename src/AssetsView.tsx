@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { AccountDetailView } from "./AccountDetailView";
 import { AccountEditor } from "./AccountEditor";
-import { GROUP_ORDER, cardNote, computeBalances, groupSections, summarizeAccounts } from "./accountLogic";
+import { GROUP_ORDER, cardNextNote, computeBalances, groupSections, summarizeAccounts } from "./accountLogic";
 import type { EntryMode } from "./EntryView";
 import { Icon } from "./Icon";
 import { KebabMenu } from "./KebabMenu";
@@ -115,7 +115,7 @@ export function AssetsView({ tabBar, today, version, onOpenSettings, onEdit, onO
   }
 
   const row = (a: Account) => {
-    const note = cardNote(a, active);
+    const note = cardNextNote(a, active, today);
     const body = (
       <>
         <span className="list-main">

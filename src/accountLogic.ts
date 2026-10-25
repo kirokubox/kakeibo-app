@@ -1,4 +1,6 @@
 // 資産の計算と入力チェック（画面から切り離した純粋なロジック）
+import { nextCardPayment } from "./businessDay.js";
+import { formatMonthDayWeekday } from "./dateUtils.js";
 import { isYen } from "./money.js";
 import { byOrder } from "./orderUtils.js";
 import { isDayOfMonth } from "./settingsLogic.js";
@@ -193,4 +195,17 @@ export function cardNote(account: Account, accounts: readonly Account[]): string
   if (!account.card) return null;
   const bank = accounts.find((a) => a.id === account.card!.paymentAccountId);
   return `引き落とし 毎月${account.card.paymentDay}日・${bank ? bank.name : "口座未設定"}`;
+}
+
+/** 資産タブのカードの行に出す説明：次の引き落とし 11/27(金)・テスト銀行 */
+export function cardNextNote(account: Account, accounts: readonly Account[], today: string): string | null {
+  if (!account.card) return null;
+  const bank = accounts.find((a) => a.id === account.card!.paymentAccountId);
+  return `次の引き落とし ${formatMonthDayWeekday(nextCardPayment(account.card, today))}・${bank ? bank.name : "口座未設定"}`;
+}
+
+/** 資産の明細のカードに出す「次の引き落とし 11/27(金)」 */
+export function nextDebitText(account: Account, today: string): string | null {
+  if (!account.card) return null;
+  return `次の引き落とし ${formatMonthDayWeekday(nextCardPayment(account.card, today))}`;
 }

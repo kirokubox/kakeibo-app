@@ -72,9 +72,9 @@ export function sampleData(): DataSet {
   d.payrolls = [{
     id: "p1", createdAt: T0, updatedAt: T0, deletedAt: null, name: "テスト給与", accountId: "a1", day: 25, holidayShift: "before",
     lines: [
-      { kind: "pay", categoryId: "c1", label: "基本給", amount: 200000 },
-      { kind: "deduction", categoryId: "c1", label: "税", amount: 20000 },
-      { kind: "settlement", accountId: "a2", label: "精算", amount: 5000 },
+      { lineId: "pl1", kind: "pay", categoryId: "c1", label: "基本給", amount: 200000 },
+      { lineId: "pl2", kind: "deduction", categoryId: "c1", label: "税", amount: 20000 },
+      { lineId: "pl3", kind: "settlement", accountId: "a2", label: "精算", amount: 5000 },
     ],
   }];
   d.reserves = [{ id: "rs1", createdAt: T0, updatedAt: T0, deletedAt: null, name: "テスト旅行", targetAmount: 50000, targetMonth: "2027-03" }];

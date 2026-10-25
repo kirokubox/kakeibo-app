@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   accountUsage,
+  cardNextNote,
   cardNote,
+  nextDebitText,
   cardOpeningToStored,
   computeBalances,
   defaultIncludeInUsable,
@@ -100,7 +102,7 @@ test("削除できるか：取引・繰り返し・よく使う入力・給料�
   const template = { type: "expense" as const, amount: 1, accountId: "a1", content: "", memo: "" };
   d.recurrings = [{ id: "r", createdAt: "", updatedAt: "", deletedAt: null, template, rule: { every: "month", day: 1 }, startDate: "2026-10-01", holidayShift: "none", estimated: false }];
   d.favorites = [{ id: "f", createdAt: "", updatedAt: "", deletedAt: null, template, order: 0 }];
-  d.payrolls = [{ id: "p", createdAt: "", updatedAt: "", deletedAt: null, name: "給与", accountId: "z", day: 25, holidayShift: "none", lines: [{ kind: "settlement", accountId: "a1", label: "精算", amount: 1 }] }];
+  d.payrolls = [{ id: "p", createdAt: "", updatedAt: "", deletedAt: null, name: "給与", accountId: "z", day: 25, holidayShift: "none", lines: [{ lineId: "l1", kind: "settlement", accountId: "a1", label: "精算", amount: 1 }] }];
   const u = accountUsage("a1", d);
   assert.deepEqual([u.transactions, u.recurrings, u.favorites, u.payrolls, u.total], [1, 1, 1, 1, 4]);
 });
@@ -156,4 +158,16 @@ test("並べ替え：order が 0 から振り直され、非表示は飛ばし�
   assert.deepEqual(moved.map((x) => [x.id, x.order]), [["b", 0], ["h", 1], ["a", 2]]);
   assert.equal(moveInOrder(list, "a", "up"), null);
   assert.equal(moveInOrder(list, "b", "down"), null);
+});
+
+test("カードの説明：資産タブは「次の引き落とし 11/27(金)・銀行」、資産の明細は毎月◯日と次の引き落とし", () => {
+  const bank = account("b1", { name: "テスト銀行", group: "bank" });
+  const card = account("c1", { name: "テストカード", group: "card", card: { paymentDay: 27, holidayShift: "after", paymentAccountId: "b1" } });
+  assert.equal(cardNextNote(card, [bank, card], "2026-11-01"), "次の引き落とし 11/27(金)・テスト銀行");
+  assert.equal(cardNextNote(card, [bank, card], "2026-12-01"), "次の引き落とし 12/28(月)・テスト銀行"); // 27日が日曜 → 28日
+  assert.equal(cardNextNote(card, [card], "2026-11-01"), "次の引き落とし 11/27(金)・口座未設定");
+  assert.equal(cardNextNote(bank, [bank, card], "2026-11-01"), null);
+  assert.equal(nextDebitText(card, "2026-11-28"), "次の引き落とし 12/28(月)");
+  assert.equal(nextDebitText(bank, "2026-11-28"), null);
+  assert.equal(cardNote(card, [bank, card]), "引き落とし 毎月27日・テスト銀行"); // 毎月◯日は資産の明細の説明に残す
 });

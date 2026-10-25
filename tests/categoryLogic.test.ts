@@ -87,7 +87,7 @@ test("使用中の数え方：取引・繰り返し・よく使う入力・給�
   const template = { type: "expense" as const, amount: 1, accountId: "a1", categoryId: "c1", content: "", memo: "" };
   d.recurrings = [{ id: "r", createdAt: "", updatedAt: "", deletedAt: null, template, rule: { every: "month", day: 1 }, startDate: "2026-10-01", holidayShift: "none", estimated: false }];
   d.favorites = [{ id: "f", createdAt: "", updatedAt: "", deletedAt: T1, template, order: 0 }];
-  d.payrolls = [{ id: "p", createdAt: "", updatedAt: "", deletedAt: null, name: "給与", accountId: "a1", day: 25, holidayShift: "none", lines: [{ kind: "pay", categoryId: "c1", label: "基本給", amount: 1 }] }];
+  d.payrolls = [{ id: "p", createdAt: "", updatedAt: "", deletedAt: null, name: "給与", accountId: "a1", day: 25, holidayShift: "none", lines: [{ lineId: "l1", kind: "pay", categoryId: "c1", label: "基本給", amount: 1 }] }];
   assert.equal(categoryUsage("c1", d), 3);
   assert.equal(categoryUsage("c2", d), 0);
 });

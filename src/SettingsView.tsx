@@ -12,6 +12,9 @@ import type { ImportPlan } from "./importPreview";
 import { resetSuggestIndex } from "./suggestStore";
 import { formatYen } from "./money";
 import { NumberSheet } from "./NumberSheet";
+import { PayrollEntryView } from "./PayrollEntryView";
+import { PayrollTemplateView } from "./PayrollTemplateView";
+import { RecurringListView } from "./RecurringListView";
 import { validateDefenseFund, validatePayday, validateReminderDays } from "./settingsLogic";
 import { exportBackup, getAllData, requestPersistentStorage, writeImported } from "./storage";
 import type { PersistenceState } from "./storage";
@@ -78,6 +81,8 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
   const [doAdd, setDoAdd] = useState(true);
   const [doUpdate, setDoUpdate] = useState(true);
   const [page, setPage] = useState<null | "expense" | "income">(null);
+  /** 入力の設定の下の画面：繰り返し・給料明細のひな形・給料明細を入れる */
+  const [inputPage, setInputPage] = useState<null | { page: "recurring" } | { page: "payroll" } | { page: "payrollEntry"; payrollId: string }>(null);
   const [sheet, setSheet] = useState<SettingSheet | null>(null);
   const [toast, showToast] = useToast();
 
@@ -157,6 +162,34 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
   const nothingToWrite = totals !== null && (doAdd ? totals.add : 0) + (doUpdate ? totals.update : 0) === 0;
 
   if (page) return <CategoriesView initialKind={page} onBack={() => setPage(null)} />;
+  const today = todayKey();
+  if (inputPage?.page === "recurring") return <RecurringListView today={today} onBack={() => setInputPage(null)} />;
+  if (inputPage?.page === "payroll") {
+    return (
+      <>
+        <PayrollTemplateView settings={settings} today={today} onBack={() => setInputPage(null)} onEnterMonth={(payrollId) => setInputPage({ page: "payrollEntry", payrollId })} />
+        {toast}
+      </>
+    );
+  }
+  if (inputPage?.page === "payrollEntry") {
+    return (
+      <>
+        <PayrollEntryView
+          payrollId={inputPage.payrollId}
+          batchId={null}
+          today={today}
+          showToast={showToast}
+          onClose={() => setInputPage({ page: "payroll" })}
+          onSaved={(m) => {
+            setInputPage({ page: "payroll" });
+            showToast(m);
+          }}
+        />
+        {toast}
+      </>
+    );
+  }
 
   return (
     <>
@@ -295,6 +328,15 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
             <SettingRow label="支出の分類" value="" onClick={() => setPage("expense")} />
             <SettingRow label="収入の分類" value="" onClick={() => setPage("income")} />
           </div>
+        </section>
+
+        <section className="card">
+          <h2>入力</h2>
+          <div className="setting-list">
+            <SettingRow label="繰り返し" value="" onClick={() => setInputPage({ page: "recurring" })} />
+            <SettingRow label="給料明細" value="" onClick={() => setInputPage({ page: "payroll" })} />
+          </div>
+          <p className="muted small">固定費や定期の振替は「繰り返し」で自動に。給料は明細1枚分をまとめて入れます。</p>
         </section>
 
         <section className="card">

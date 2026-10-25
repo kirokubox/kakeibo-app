@@ -5,6 +5,7 @@ import { evaluate, formatExpr, pressKey, startPad } from "./calculator";
 import type { PadKey, PadState } from "./calculator";
 import { CategoryPanel } from "./CategoryPanel";
 import { ConfirmSheet } from "./BottomSheet";
+import { RecurrenceSheet, RepeatFields } from "./RecurrenceSheet";
 import { formatDateJa, isLocalDate, nowIso } from "./dateUtils";
 import {
   TAG_LABELS,
@@ -38,7 +39,19 @@ import { ReimburseSheet } from "./ReimburseSheet";
 import { applyReimbFields, checkReimbWithin, isSettleCategory, outstandingGroups, overReturn, remainingFor } from "./reimburseLogic";
 import type { OutstandingItem, Reimb } from "./reimburseLogic";
 import { getReimburseSet } from "./reimburseStore";
-import { getAll, newBase, saveRecord, softDelete } from "./storage";
+import {
+  applyRepeatEdit,
+  buildRecurring,
+  defaultRepeat,
+  endRecurringToday,
+  recurringToRepeat,
+  repeatLabel,
+  shouldClearEstimated,
+  templateAsTransaction,
+  validateRepeat,
+} from "./recurrence";
+import type { RepeatDraft } from "./recurrence";
+import { getAll, newBase, saveRecord, saveStores, softDelete } from "./storage";
 import { getSuggestIndex, noteTransactionChanged } from "./suggestStore";
 import { currentWord, lastUsageOf, replaceCurrentWord, suggestContents, suggestMemoWords } from "./suggestLogic";
 import type { SuggestIndex } from "./suggestLogic";
@@ -62,12 +75,14 @@ import {
   transferUsageHint,
 } from "./transferLogic";
 import type { TransferDraft, TransferFocus, TransferMissing } from "./transferLogic";
-import type { Account, Category, Favorite, Id, Transaction } from "./types";
+import type { Account, Category, Favorite, Id, Recurring, Transaction } from "./types";
 
 export type EntryMode =
   | { kind: "new"; date: string; type?: EntryType; transfer?: { draft: TransferDraft; focus: TransferFocus } }
   | { kind: "edit"; tx: Transaction }
-  | { kind: "copy"; tx: Transaction; today: string };
+  | { kind: "copy"; tx: Transaction; today: string }
+  /** 繰り返しの編集（設定の「繰り返し」から）。保存すると、これから作る分だけが変わる */
+  | { kind: "recurring"; rec: Recurring };
 
 interface Props {
   mode: EntryMode;
@@ -76,11 +91,13 @@ interface Props {
   /** 保存・削除・元に戻すのあと（一覧を読み直してもらう） */
   onChanged: () => void;
   onClose: () => void;
+  /** 給料明細の入力を開く（︙の「給料明細から入力」と、給料明細の一部の明細から）。渡さなければ項目を出さない */
+  onOpenPayroll?: (target: { payrollId?: Id; batchId?: Id }) => void;
 }
 
 /** account = 資産（振替では出金）、to = 振替の入金、fee = 振替の手数料 */
 type Panel = "account" | "to" | "category" | "amount" | "fee" | null;
-type Sheet = null | "discard" | "delete" | "favorites" | "reimb" | "settle";
+type Sheet = null | "discard" | "delete" | "favorites" | "reimb" | "settle" | "repeat" | "deleteRec";
 type ErrorKey = MissingField | "to" | "reimb";
 
 const TYPE_LABELS: Record<EntryType, string> = { income: "収入", expense: "支出" };
@@ -93,7 +110,18 @@ interface FormState {
   settlesTxId: Id | null;
 }
 
+const NO_BASE = { id: "", createdAt: "", updatedAt: "", deletedAt: null };
+
 function initialState(mode: EntryMode): FormState {
+  if (mode.kind === "recurring") {
+    // 繰り返しのひな形を、普通の入力と同じ形の下書きにして開く
+    const t = templateAsTransaction(mode.rec.template, mode.rec.startDate, NO_BASE);
+    const date = mode.rec.startDate;
+    if (t.type === "transfer") {
+      return { isTransfer: true, draft: emptyDraft("expense", date), tdraft: transferFromTransaction(t) ?? emptyTransferDraft(date), reimb: null, settlesTxId: null };
+    }
+    return { isTransfer: false, draft: draftFromTransaction(t) ?? emptyDraft("expense", date), tdraft: emptyTransferDraft(date), reimb: null, settlesTxId: null };
+  }
   if (mode.kind === "new") {
     return {
       isTransfer: !!mode.transfer,
@@ -121,7 +149,7 @@ function initialState(mode: EntryMode): FormState {
 }
 
 /** 入力画面（収入・支出・振替）。新規・編集・コピー */
-export function EntryView({ mode, today, showToast, onChanged, onClose }: Props) {
+export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPayroll }: Props) {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [index, setIndex] = useState<SuggestIndex | null>(null);
@@ -134,6 +162,11 @@ export function EntryView({ mode, today, showToast, onChanged, onClose }: Props)
   const [settlesTxId, setSettlesTxId] = useState<Id | null>(init.settlesTxId);
   const [reimburseSet, setReimburseSet] = useState<Transaction[]>([]);
   const [initialJson, setInitialJson] = useState(() => JSON.stringify(init));
+  const isRecMode = mode.kind === "recurring";
+  const [repeat, setRepeat] = useState<RepeatDraft | null>(() => (mode.kind === "recurring" ? recurringToRepeat(mode.rec) : null));
+  const [initialRepeatJson, setInitialRepeatJson] = useState(() => JSON.stringify(mode.kind === "recurring" ? recurringToRepeat(mode.rec) : null));
+  /** 見込みの明細を開いたときの「実額にした」のチェック */
+  const [actual, setActual] = useState(false);
   const [panel, setPanel] = useState<Panel>(null);
   const [pad, setPad] = useState<PadState>({ expr: "", fresh: false });
   const [error, setError] = useState<ErrorKey | null>(null);
@@ -152,7 +185,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose }: Props)
   const rowRefs = useRef<Record<string, HTMLElement | null>>({});
   const shakeTimer = useRef<number | undefined>(undefined);
 
-  const source = existing?.source ?? "manual";
+  const source = isRecMode ? "recurring" : (existing?.source ?? "manual");
   const isEdit = existing !== undefined;
 
   // 資産・分類・候補の集計を読む
@@ -212,7 +245,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose }: Props)
   const fromAccount = accountList.find((a) => a.id === tdraft.fromId);
   const toAccount = accountList.find((a) => a.id === tdraft.toId);
   const tags = isTransfer ? [] : tagOptions(draft.type, category);
-  const dirty = JSON.stringify({ isTransfer, draft, tdraft, reimb, settlesTxId }) !== initialJson;
+  const dirty = JSON.stringify({ isTransfer, draft, tdraft, reimb, settlesTxId }) !== initialJson || JSON.stringify(repeat) !== initialRepeatJson || actual;
 
   const curDate = isTransfer ? tdraft.date : draft.date;
   const curAmount = isTransfer ? tdraft.amount : draft.amount;
@@ -495,18 +528,57 @@ export function EntryView({ mode, today, showToast, onChanged, onClose }: Props)
       }
       record = applyReimbFields(draftToTransaction(d, categories, newBase(), existing), reimb, settlesTxId);
     }
+    if (repeat) {
+      const problem = validateRepeat(repeat, mode.kind === "recurring" ? mode.rec.startDate : record.date);
+      if (problem) {
+        showToast(problem);
+        return;
+      }
+    }
+    // 見込みの明細：金額を変えた・「実額にした」にチェックを入れたら、見込みの印を外す
+    if (existing?.estimated && shouldClearEstimated(existing.amount, record.amount, actual)) delete record.estimated;
     setSaving(true);
     try {
-      const saved = await saveRecord("transactions", record);
-      noteTransactionChanged(saved);
+      const template = isTransfer ? transferToTemplate(t) : draftToTemplate(d);
+      if (mode.kind === "recurring") {
+        // 繰り返しの編集：これから作る分だけが変わる（作り済みの明細は変えない）
+        await saveRecord("recurrings", applyRepeatEdit(mode.rec, repeat ?? recurringToRepeat(mode.rec), template));
+        onChanged();
+        showToast("繰り返しを更新しました");
+        onClose();
+        return;
+      }
+      let saved: Transaction | null = null;
+      let repeatToast = "";
+      if (repeat) {
+        // 繰り返しを作る：入力中の明細を1回目として保存する（日付が未来なら保存せず、その日が来たら自動で入る）
+        const firstSaved = record.date <= today;
+        const rec = buildRecurring(repeat, template, record.date, newBase(), firstSaved);
+        if (firstSaved) {
+          record = { ...record, recurringId: rec.id };
+          await saveStores({ transactions: [record], recurrings: [rec] });
+          saved = record;
+          repeatToast = `（${repeatLabel(repeat)}の繰り返しを作りました）`;
+        } else {
+          await saveRecord("recurrings", rec);
+          repeatToast = `繰り返しを作りました。${formatDateJa(record.date)}に最初の明細が入ります`;
+        }
+      } else {
+        saved = await saveRecord("transactions", record);
+      }
+      if (saved) noteTransactionChanged(saved);
       const fromId = isTransfer ? t.fromId : d.accountId;
       if (fromId) writePref(PREF_LAST_ACCOUNT, fromId);
       onChanged();
       if (!andContinue) {
-        showToast("保存しました");
+        showToast(repeatToast && !saved ? repeatToast : `保存しました${repeatToast}`);
         onClose();
         return;
       }
+      // 「続ける」では繰り返しを引き継がない（1件ごとに作る）
+      setRepeat(null);
+      setInitialRepeatJson("null");
+      setActual(false);
       setExisting(undefined);
       if (isTransfer) {
         const next = continueTransferDraft(t);
@@ -604,15 +676,50 @@ export function EntryView({ mode, today, showToast, onChanged, onClose }: Props)
     showToast("コピーして新しく入力します");
   };
 
-  const menu = [
-    { label: "よく使う入力に登録", onSelect: () => void registerFavorite() },
-    ...(isEdit
-      ? [
-          { label: "コピーして新しく入力", onSelect: copyAsNew },
-          { label: "削除", onSelect: () => setSheet("delete"), danger: true },
-        ]
-      : []),
-  ];
+  /** 繰り返しの編集の︙「終わりにする」：終わりの日＝今日 */
+  const endRepeatNow = async () => {
+    if (mode.kind !== "recurring") return;
+    try {
+      await saveRecord("recurrings", endRecurringToday(mode.rec, today));
+      onChanged();
+      showToast("繰り返しを終わりにしました");
+      onClose();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "保存できませんでした");
+    }
+  };
+
+  /** 繰り返しの削除：論理削除。作り済みの明細は残す */
+  const removeRepeat = async () => {
+    if (mode.kind !== "recurring") return;
+    setSaving(true);
+    try {
+      await softDelete("recurrings", mode.rec.id);
+      onChanged();
+      showToast("繰り返しを削除しました（作り済みの明細は残っています）");
+      onClose();
+    } catch (e) {
+      setSheet(null);
+      setSaving(false);
+      showToast(e instanceof Error ? e.message : "削除できませんでした");
+    }
+  };
+
+  const menu = isRecMode
+    ? [
+        { label: "終わりにする", onSelect: () => void endRepeatNow() },
+        { label: "削除", onSelect: () => setSheet("deleteRec"), danger: true },
+      ]
+    : [
+        ...(onOpenPayroll && !isEdit ? [{ label: "給料明細から入力", onSelect: () => onOpenPayroll({}) }] : []),
+        { label: "よく使う入力に登録", onSelect: () => void registerFavorite() },
+        ...(isEdit
+          ? [
+              { label: "コピーして新しく入力", onSelect: copyAsNew },
+              { label: "削除", onSelect: () => setSheet("delete"), danger: true },
+            ]
+          : []),
+      ];
 
   const recall = useCallback(
     (template: Favorite["template"]) => {
@@ -645,7 +752,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose }: Props)
 
   // ---- 表示 ----
 
-  const title = `${isTransfer ? "振替" : TYPE_LABELS[draft.type]}${isEdit ? "を編集" : ""}`;
+  const title = isRecMode ? "繰り返しを編集" : `${isTransfer ? "振替" : TYPE_LABELS[draft.type]}${isEdit ? "を編集" : ""}`;
   const amountText =
     panel === "amount" ? (pad.expr === "" ? "" : formatExpr(pad.expr)) : curAmount === null ? "" : curAmount.toLocaleString("ja-JP");
   const feeNow = feeOf(tdraft);
@@ -714,7 +821,37 @@ export function EntryView({ mode, today, showToast, onChanged, onClose }: Props)
               </button>
             </div>
 
+            {existing?.estimated && (
+              <div className="estimated-note" role="status">
+                <span>見込みの金額です。請求が確定したら金額を直してください</span>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={actual || (curAmount !== null && curAmount !== existing.amount)}
+                    disabled={curAmount !== null && curAmount !== existing.amount}
+                    onChange={(e) => setActual(e.target.checked)}
+                  />
+                  実額にした
+                </label>
+              </div>
+            )}
+            {existing?.payrollBatchId && onOpenPayroll && (
+              <div className="payroll-note" role="status">
+                <span>給料明細の一部です</span>
+                <button type="button" className="secondary-btn" onClick={() => onOpenPayroll({ payrollId: existing.payrollId, batchId: existing.payrollBatchId })}>
+                  給料明細として開く
+                </button>
+              </div>
+            )}
+
+            {mode.kind === "recurring" && repeat && (
+              <section className="repeat-card" aria-label="繰り返しの設定">
+                <RepeatFields value={repeat} onChange={setRepeat} anchorDate={mode.rec.startDate} />
+              </section>
+            )}
+
             <section className="entry-rows">
+              {!isRecMode && (
               <div className="entry-row">
                 <span className="entry-label">日付</span>
                 <label className="entry-value date-label">
@@ -735,10 +872,13 @@ export function EntryView({ mode, today, showToast, onChanged, onClose }: Props)
                     }}
                   />
                 </label>
-                <button type="button" className="text-btn repeat-btn" onClick={() => showToast("繰り返しは段階5で使えます")}>
-                  繰り返し
-                </button>
+                {!existing?.recurringId && (
+                  <button type="button" className={`text-btn repeat-btn${repeat ? " on" : ""}`} onClick={() => setSheet("repeat")}>
+                    {repeat ? repeatLabel(repeat) : "繰り返し"}
+                  </button>
+                )}
               </div>
+              )}
 
               {isTransfer ? (
                 <div className="transfer-pair">
@@ -1002,9 +1142,11 @@ export function EntryView({ mode, today, showToast, onChanged, onClose }: Props)
 
       {panel === null && (
         <footer className="entry-footer">
-          <button type="button" className="secondary-btn" disabled={saving} onClick={() => void save(true)}>
-            続ける
-          </button>
+          {!isRecMode && (
+            <button type="button" className="secondary-btn" disabled={saving} onClick={() => void save(true)}>
+              続ける
+            </button>
+          )}
           <button type="button" className="primary-btn save-btn" disabled={saving} onClick={() => void save(false)}>
             保存
           </button>
@@ -1026,6 +1168,34 @@ export function EntryView({ mode, today, showToast, onChanged, onClose }: Props)
         />
       )}
       {sheet === "settle" && <OutstandingPicker groups={outstandingGroups(reimburseSet, existing?.id)} onPick={pickSettle} onClose={() => setSheet(null)} />}
+      {sheet === "repeat" && (
+        <RecurrenceSheet
+          initial={repeat}
+          defaultDraft={defaultRepeat(curDate)}
+          anchorDate={curDate}
+          startDate={curDate}
+          onDecide={(d) => {
+            setRepeat(d);
+            setSheet(null);
+          }}
+          onRemove={() => {
+            setRepeat(null);
+            setSheet(null);
+          }}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet === "deleteRec" && (
+        <ConfirmSheet
+          title="この繰り返しを削除しますか"
+          message="これから明細は作られなくなります。作り済みの明細は残ります。"
+          confirmLabel="削除する"
+          danger
+          busy={saving}
+          onConfirm={() => void removeRepeat()}
+          onClose={() => setSheet(null)}
+        />
+      )}
       {sheet === "discard" && (
         <ConfirmSheet
           title="入力した内容を捨てますか"

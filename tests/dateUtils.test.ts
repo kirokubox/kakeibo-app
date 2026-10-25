@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatDateJa, isIsoDateTime, isLocalDate, isMonthKey, nowIso, toDateKey } from "../src/dateUtils.js";
+import { addMonths, daysInMonth, formatDateJa, formatMonthDayWeekday, isIsoDateTime, isLocalDate, isMonthKey, nowIso, toDateKey } from "../src/dateUtils.js";
 
 test("暦日の検証（実在する日付だけ）", () => {
   assert.equal(isLocalDate("2026-10-25"), true);
@@ -34,4 +34,17 @@ test("日付の表示：今年は年なし、今年以外は年あり", () => {
   const today = new Date(2026, 9, 25);
   assert.equal(formatDateJa("2026-10-12", today), "10月12日（月）");
   assert.equal(formatDateJa("2025-12-31", today), "2025年12月31日（水）");
+});
+
+test("月の日数・年月の加減・月日と曜日の表示", () => {
+  assert.equal(daysInMonth(2026, 2), 28);
+  assert.equal(daysInMonth(2028, 2), 29);
+  assert.equal(daysInMonth(2026, 4), 30);
+  assert.equal(daysInMonth(2026, 12), 31);
+  assert.equal(addMonths("2026-10", 1), "2026-11");
+  assert.equal(addMonths("2026-12", 1), "2027-01");
+  assert.equal(addMonths("2026-01", -1), "2025-12");
+  assert.equal(addMonths("2026-10", 14), "2027-12");
+  assert.equal(formatMonthDayWeekday("2026-11-27"), "11/27(金)");
+  assert.equal(formatMonthDayWeekday("2026-10-04"), "10/4(日)");
 });

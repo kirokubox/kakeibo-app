@@ -122,6 +122,7 @@ function checkTemplate(t: unknown, at: string): string | null {
     opt(t, "reconciledStatementId", at, isNonEmptyStr, "文字列"),
     opt(t, "recurringId", at, isNonEmptyStr, "文字列"),
     opt(t, "payrollId", at, isNonEmptyStr, "文字列"),
+    opt(t, "payrollBatchId", at, isNonEmptyStr, "文字列"),
   );
 }
 
@@ -191,6 +192,7 @@ const checkTransaction: Check = (v, at) =>
     opt(v, "reconciledStatementId", at, isNonEmptyStr, "文字列"),
     opt(v, "recurringId", at, isNonEmptyStr, "文字列"),
     opt(v, "payrollId", at, isNonEmptyStr, "文字列"),
+    opt(v, "payrollBatchId", at, isNonEmptyStr, "文字列"),
     reqEnum(v, "source", TX_SOURCES, at),
   );
 
@@ -200,10 +202,25 @@ const checkRecurring: Check = (v, at) => {
   if (!isRecord(rule)) ruleProblem = `${at}.rule がオブジェクトではありません`;
   else {
     const p = `${at}.rule`;
+    const every = rule.every;
+    const day = rule.day;
+    const isInt = (x: unknown, min: number, max: number) => Number.isSafeInteger(x) && (x as number) >= min && (x as number) <= max;
+    let dayProblem: string | null;
+    if (every === "week") dayProblem = isInt(day, 1, 7) ? null : `${p}.day が 1（月）〜7（日）の整数ではありません`;
+    else dayProblem = isInt(day, 1, 31) || day === "last" ? null : `${p}.day が 1〜31 の整数または "last" ではありません`;
     ruleProblem = first(
       reqEnum(rule, "every", ["month", "nMonths", "year", "week"], p),
-      opt(rule, "n", p, (x) => Number.isSafeInteger(x), "整数"),
-      Number.isSafeInteger(rule.day) || rule.day === "last" ? null : `${p}.day が整数または "last" ではありません`,
+      every === "nMonths"
+        ? isInt(rule.n, 2, 12)
+          ? null
+          : `${p}.n が 2〜12 の整数ではありません`
+        : opt(rule, "n", p, (x) => Number.isSafeInteger(x), "整数"),
+      every === "year"
+        ? isInt(rule.month, 1, 12)
+          ? null
+          : `${p}.month が 1〜12 の整数ではありません`
+        : opt(rule, "month", p, (x) => isInt(x, 1, 12), "1〜12 の整数"),
+      dayProblem,
     );
   }
   return first(
@@ -211,6 +228,7 @@ const checkRecurring: Check = (v, at) => {
     ruleProblem,
     reqDate(v, "startDate", at),
     v.endDate === undefined || isLocalDate(v.endDate) ? null : `${at}.endDate が YYYY-MM-DD 形式の実在する日付ではありません`,
+    v.generatedThrough === undefined || isLocalDate(v.generatedThrough) ? null : `${at}.generatedThrough が YYYY-MM-DD 形式の実在する日付ではありません`,
     reqEnum(v, "holidayShift", HOLIDAY_SHIFTS, at),
     reqBool(v, "estimated", at),
   );
@@ -228,15 +246,34 @@ const checkPayroll: Check = (v, at) => {
       if (!isRecord(line)) {
         linesProblem = `${p} がオブジェクトではありません`;
       } else if (line.kind === "settlement") {
-        linesProblem = first(reqId(line, "accountId", p), reqStr(line, "label", p), reqYen(line, "amount", p));
+        linesProblem = first(reqId(line, "lineId", p), reqId(line, "accountId", p), reqStr(line, "label", p), reqYen(line, "amount", p));
       } else if (line.kind === "pay" || line.kind === "deduction") {
-        linesProblem = first(reqId(line, "categoryId", p), reqStr(line, "label", p), reqYen(line, "amount", p));
+        linesProblem = first(reqId(line, "lineId", p), reqId(line, "categoryId", p), reqStr(line, "label", p), reqYen(line, "amount", p));
       } else {
         linesProblem = `${p}.kind が pay / deduction / settlement のどれかではありません`;
       }
     }
   }
-  return first(reqStr(v, "name", at), reqId(v, "accountId", at), reqInt(v, "day", at), reqEnum(v, "holidayShift", HOLIDAY_SHIFTS, at), linesProblem);
+  let lastProblem: string | null = null;
+  if (v.lastAmounts !== undefined) {
+    if (!isRecord(v.lastAmounts)) lastProblem = `${at}.lastAmounts がオブジェクトではありません`;
+    else {
+      for (const [k, val] of Object.entries(v.lastAmounts)) {
+        if (!isYen(val)) {
+          lastProblem = `${at}.lastAmounts.${k} が整数の金額ではありません`;
+          break;
+        }
+      }
+    }
+  }
+  return first(
+    reqStr(v, "name", at),
+    reqId(v, "accountId", at),
+    Number.isSafeInteger(v.day) && (v.day as number) >= 1 && (v.day as number) <= 31 ? null : `${at}.day が 1〜31 の整数ではありません`,
+    reqEnum(v, "holidayShift", HOLIDAY_SHIFTS, at),
+    linesProblem,
+    lastProblem,
+  );
 };
 
 const checkReserve: Check = (v, at) =>

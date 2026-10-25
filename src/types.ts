@@ -77,6 +77,8 @@ export interface Transaction extends Base {
   reconciledStatementId?: Id; // カード照合済み
   recurringId?: Id;
   payrollId?: Id;
+  /** 給料明細1枚分（その月の支給・控除・精算）を束ねるid。同じ明細の取引は同じ値を持つ */
+  payrollBatchId?: Id;
   source: TxSource;
 }
 
@@ -86,9 +88,15 @@ export type TransactionTemplate = Omit<Transaction, keyof Base | "date" | "sourc
 export type RecurringEvery = "month" | "nMonths" | "year" | "week";
 export interface Recurring extends Base {
   template: TransactionTemplate;
-  rule: { every: RecurringEvery; n?: number; day: number | "last" };
+  /**
+   * 繰り返しのルール。day：毎月・◯か月ごと＝1〜31 か "last"（末日）、毎年＝month（1〜12）と合わせた日、毎週＝1（月）〜7（日）。
+   * n は「◯か月ごと」の間隔（2〜12）
+   */
+  rule: { every: RecurringEvery; n?: number; day: number | "last"; month?: number };
   startDate: string;
   endDate?: string;
+  /** どの予定日まで明細を作ったか（休日の移動をする前の日付）。二重に作らないために覚える */
+  generatedThrough?: string;
   holidayShift: HolidayShift;
   estimated: boolean; // 毎月金額が変わるもの
 }
@@ -98,15 +106,18 @@ export interface Favorite extends Base {
   order: number;
 }
 
+/** lineId は行ごとの固定のid（前回の金額を行の順番ではなく行に結びつけるため） */
 export type PayrollLine =
-  | { kind: "pay" | "deduction"; categoryId: Id; label: string; amount: number }
-  | { kind: "settlement"; accountId: Id; label: string; amount: number }; // 社員証などの精算（支出にしない）
+  | { lineId: Id; kind: "pay" | "deduction"; categoryId: Id; label: string; amount: number }
+  | { lineId: Id; kind: "settlement"; accountId: Id; label: string; amount: number }; // 社員証などの精算（支出にしない）
 export interface Payroll extends Base {
   name: string;
   accountId: Id;
   day: number;
   holidayShift: HolidayShift;
   lines: PayrollLine[];
+  /** 行ごとの前回の金額（キーは lineId）。次の月の初期値にする */
+  lastAmounts?: Record<string, number>;
 }
 
 export interface Reserve extends Base {

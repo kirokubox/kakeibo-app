@@ -30,6 +30,11 @@
     "src/transferLogic.ts",
     "src/reimburseLogic.ts",
     "src/adjustLogic.ts",
+    "src/holidays.ts",
+    "src/businessDay.ts",
+    "src/recurrence.ts",
+    "src/payrollLogic.ts",
+    "src/scheduleLogic.ts",
     "tests/fixtures.ts",
     "tests/dateUtils.test.ts",
     "tests/money.test.ts",
@@ -45,6 +50,10 @@
     "tests/suggestLogic.test.ts",
     "tests/transferLogic.test.ts",
     "tests/reimburseLogic.test.ts",
-    "tests/adjustLogic.test.ts"
+    "tests/adjustLogic.test.ts",
+    "tests/businessDay.test.ts",
+    "tests/recurrence.test.ts",
+    "tests/scheduleLogic.test.ts",
+    "tests/payrollLogic.test.ts"
   ]
 }

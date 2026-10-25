@@ -79,3 +79,22 @@ export function weekdayOf(key: string): number {
 export function compareDates(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
+
+/** その月の日数（month は 1〜12） */
+export function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/** 画面表示用：11/27(金)。年は付けない */
+export function formatMonthDayWeekday(key: string): string {
+  if (!isLocalDate(key)) return key;
+  const [, m, d] = key.split("-").map(Number);
+  return `${m}/${d}(${WEEKDAYS[weekdayOf(key)]})`;
+}
+
+/** 年月（YYYY-MM）に月を足す（負で引く） */
+export function addMonths(ym: string, months: number): string {
+  const [y, m] = ym.split("-").map(Number);
+  const idx = y * 12 + (m - 1) + months;
+  return `${Math.floor(idx / 12)}-${pad((idx % 12) + 1)}`;
+}
