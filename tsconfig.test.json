@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": [
+      "node"
+    ],
+    "rootDir": ".",
+    "outDir": ".test-build"
+  },
+  "include": [
+    "src/types.ts",
+    "src/constants.ts",
+    "src/dateUtils.ts",
+    "src/money.ts",
+    "src/seedCategories.ts",
+    "src/backup.ts",
+    "src/importPreview.ts",
+    "tests/fixtures.ts",
+    "tests/dateUtils.test.ts",
+    "tests/money.test.ts",
+    "tests/seedCategories.test.ts",
+    "tests/backup.test.ts",
+    "tests/importPreview.test.ts"
+  ]
+}

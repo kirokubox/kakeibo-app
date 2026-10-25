@@ -1,0 +1,23 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Dependency directories
+node_modules/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Build output
+dist/
+.DS_Store
+
+# テストコンパイル出力（npm test が tsc -p tsconfig.test.json で生成）
+.test-build/
+
+# 本人の実データ（バックアップ）はコミットしない
+kakeibo-backup-*.json
+
+# Claude Code のローカル設定
+.claude/

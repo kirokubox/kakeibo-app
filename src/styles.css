@@ -1,0 +1,160 @@
+/* 色・余白・角丸などの値は tokens.css（キロク箱 共通の見た目ルール）から使う。
+   このアプリで変えるのはアクセント色の3つだけ。 */
+:root {
+  /* アクセント：「押せる・選択中」にだけ使う。白文字が読める濃さ（コントラスト比5.7） */
+  --kb-accent: #5a5fb0;
+  --kb-accent-strong: #484c92;
+  --kb-accent-soft: #ecedf8;
+  font-family: var(--kb-font);
+  color: var(--kb-text);
+  background: var(--kb-surface);
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body { background: var(--kb-bg); -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+.icon { display: block; flex: none; }
+
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(8px); } }
+
+.app {
+  max-width: var(--kb-content-max);
+  height: 100dvh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--kb-bg);
+  padding-top: env(safe-area-inset-top);
+  box-shadow: 0 0 0 1px var(--kb-line);
+}
+
+/* 上のバー：いま見ている画面名だけ */
+.topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--kb-space-1);
+  min-height: var(--kb-bar-h);
+  padding: 0 var(--kb-space-2) 0 var(--kb-space-4);
+  background: var(--kb-surface);
+  border-bottom: 1px solid var(--kb-line);
+}
+.topbar .icon-btn:first-child:not(:last-child) { margin-left: calc(-1 * var(--kb-space-2)); }
+.topbar-title { flex: 1; margin: 0; font-size: var(--kb-fs-l); font-weight: 700; }
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: var(--kb-tap); min-height: var(--kb-tap);
+  border: 0; background: transparent; border-radius: var(--kb-radius-m);
+  color: var(--kb-text-2);
+  transition: background var(--kb-dur) var(--kb-ease), transform var(--kb-dur) var(--kb-ease);
+}
+.icon-btn:hover { background: var(--kb-surface-2); }
+.icon-btn:active { transform: scale(0.94); }
+
+.content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--kb-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--kb-space-4);
+  animation: fade-in var(--kb-dur) var(--kb-ease);
+}
+
+/* 下タブ：アイコン＋短い文字。枠なし。選択中は色を変えてアイコンの後ろに淡い面を敷く */
+.tabbar {
+  flex: none;
+  display: flex;
+  background: var(--kb-surface);
+  border-top: 1px solid var(--kb-line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tab {
+  flex: 1;
+  min-height: var(--kb-tab-h);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  border: 0; background: transparent;
+  color: var(--kb-text-3);
+  font-size: var(--kb-fs-xs);
+}
+.tab-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 52px; height: 28px; border-radius: var(--kb-radius-pill);
+  transition: background var(--kb-dur) var(--kb-ease), transform var(--kb-dur) var(--kb-ease);
+}
+.tab:active .tab-icon { transform: scale(0.92); }
+.tab.active { color: var(--kb-accent-strong); font-weight: 700; }
+.tab.active .tab-icon { background: var(--kb-accent-soft); }
+
+/* 未実装の画面 */
+.placeholder {
+  background: var(--kb-surface);
+  border-radius: var(--kb-radius-m);
+  padding: var(--kb-space-5) var(--kb-space-4);
+  text-align: center;
+}
+.placeholder-stage { margin: 0 0 var(--kb-space-2); font-size: var(--kb-fs-l); font-weight: 700; }
+.placeholder-body { margin: 0; color: var(--kb-text-2); font-size: var(--kb-fs-m); line-height: 1.6; }
+
+/* 設定のカード（1層まで） */
+.card {
+  background: var(--kb-surface);
+  border-radius: var(--kb-radius-m);
+  padding: var(--kb-space-4);
+  animation: rise-in var(--kb-dur) var(--kb-ease);
+}
+.card h2 { margin: 0 0 var(--kb-space-3); font-size: var(--kb-fs-l); }
+.card h3 { margin: var(--kb-space-4) 0 var(--kb-space-2); font-size: var(--kb-fs-m); }
+.card p { margin: var(--kb-space-2) 0; line-height: 1.6; font-size: var(--kb-fs-m); }
+.muted { color: var(--kb-text-2); }
+.small { font-size: var(--kb-fs-s) !important; }
+
+/* 項目名｜値の行 */
+.rows { margin: 0; }
+.row {
+  display: flex; justify-content: space-between; align-items: baseline; gap: var(--kb-space-3);
+  padding: var(--kb-space-2) 0;
+  border-bottom: 1px solid var(--kb-line);
+  font-size: var(--kb-fs-m);
+}
+.row:last-child { border-bottom: 0; }
+.row dt { color: var(--kb-text-2); flex: none; }
+.row dd { margin: 0; text-align: right; }
+
+/* ボタン：主ボタンは塗り、副ボタンは淡い面。枠線は付けない */
+.actions { display: flex; flex-wrap: wrap; gap: var(--kb-space-2); margin: var(--kb-space-3) 0; }
+.primary-btn, .secondary-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--kb-space-2);
+  min-height: var(--kb-tap); padding: 0 var(--kb-space-4);
+  border: 0; border-radius: var(--kb-radius-m); font-size: var(--kb-fs-m); font-weight: 600;
+  transition: background var(--kb-dur) var(--kb-ease), transform var(--kb-dur) var(--kb-ease);
+}
+.primary-btn { background: var(--kb-accent); color: var(--kb-on-accent); }
+.primary-btn:hover { background: var(--kb-accent-strong); }
+.secondary-btn { background: var(--kb-accent-soft); color: var(--kb-accent-strong); }
+.primary-btn:active, .secondary-btn:active { transform: scale(0.97); }
+.primary-btn:disabled, .secondary-btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+
+/* お知らせ */
+.notice {
+  margin: 0; padding: var(--kb-space-3) var(--kb-space-4);
+  border-radius: var(--kb-radius-m); font-size: var(--kb-fs-m); line-height: 1.6;
+  animation: rise-in var(--kb-dur) var(--kb-ease);
+}
+.notice.ok { background: var(--kb-accent-soft); color: var(--kb-accent-strong); }
+.notice.danger { background: var(--kb-danger-soft); color: var(--kb-danger); }
+
+/* 追加インポートの確認 */
+.preview { border-top: 1px solid var(--kb-line); margin-top: var(--kb-space-4); }
+.table-scroll { overflow-x: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: var(--kb-fs-s); }
+.data-table th, .data-table td { border-bottom: 1px solid var(--kb-line); padding: 6px 6px; text-align: left; white-space: nowrap; }
+.data-table th { color: var(--kb-text-2); font-weight: 600; font-size: var(--kb-fs-xs); }
+.data-table td:not(:first-child), .data-table th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.data-table tr.total td { font-weight: 700; border-bottom: 0; }
+.check { display: flex; align-items: center; gap: var(--kb-space-2); min-height: var(--kb-tap); font-size: var(--kb-fs-m); }
+.check input { width: 20px; height: 20px; accent-color: var(--kb-accent); }

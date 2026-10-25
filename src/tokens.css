@@ -1,0 +1,69 @@
+/*
+  キロク箱 共通の見た目ルール（色・余白・角丸・文字サイズ・動き）。
+  正本：05_開発・Webアプリ/00_共通/25_共有_アプリ共通の見た目ルール.md
+  このファイルは各アプリへ同じ内容をコピーして置く。アプリごとに変えるのは
+  styles.css 側で上書きする「アクセント色の3つ」だけ。
+*/
+:root {
+  /* アクセント：「押せる・選択中」にだけ使う。アプリごとに上書きする */
+  --kb-accent: #3f6b7d;
+  --kb-accent-strong: #335867;
+  --kb-accent-soft: #e8f1f4;
+  --kb-on-accent: #ffffff;
+
+  /* 面と文字 */
+  --kb-bg: #f5f7f8;
+  --kb-surface: #ffffff;
+  --kb-surface-2: #f1f4f6;
+  --kb-text: #1f2a30;
+  --kb-text-2: #55656d;
+  --kb-text-3: #7b8a91;
+  --kb-line: #e3e9ec;
+  --kb-line-strong: #cdd8dc;
+
+  /* 状態 */
+  --kb-danger: #b3261e;
+  --kb-danger-soft: #fdecea;
+  --kb-warning: #7a5a12;
+  --kb-warning-soft: #fdf6e3;
+  --kb-toast: #263238;
+
+  /* 角丸 */
+  --kb-radius-s: 8px;
+  --kb-radius-m: 12px;
+  --kb-radius-l: 18px;
+  --kb-radius-pill: 999px;
+
+  /* 余白（4の倍数） */
+  --kb-space-1: 4px;
+  --kb-space-2: 8px;
+  --kb-space-3: 12px;
+  --kb-space-4: 16px;
+  --kb-space-5: 24px;
+  --kb-space-6: 32px;
+
+  /* 文字サイズ */
+  --kb-fs-xs: 0.75rem;
+  --kb-fs-s: 0.8125rem;
+  --kb-fs-m: 0.9375rem;
+  --kb-fs-l: 1.0625rem;
+  --kb-fs-xl: 1.25rem;
+
+  /* 寸法 */
+  --kb-tap: 44px;
+  --kb-bar-h: 52px;
+  --kb-tab-h: 56px;
+  --kb-content-max: 640px;
+
+  /* 動き */
+  --kb-dur: 160ms;
+  --kb-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  --kb-font: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Segoe UI", sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --kb-dur: 0ms;
+  }
+}

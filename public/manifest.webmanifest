@@ -1,0 +1,18 @@
+{
+  "id": "/kakeibo-app/?app=kakeibo",
+  "name": "家計簿",
+  "short_name": "家計簿",
+  "description": "使える額を見ながら、収入・支出・資産を記録する、自分用の家計簿",
+  "start_url": "/kakeibo-app/",
+  "scope": "/kakeibo-app/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "icons/kakeibo-app-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/kakeibo-app-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/kakeibo-app-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/kakeibo-app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

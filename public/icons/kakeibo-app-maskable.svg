@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7a7fd8"/><stop offset="1" stop-color="#4a4f9f"/></linearGradient></defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <g transform="translate(51.2 51.2) scale(0.8)">
+    <rect x="104" y="116" width="304" height="300" rx="34" fill="#1b1d52" opacity="0.18"/>
+    <rect x="104" y="104" width="304" height="300" rx="34" fill="#ffffff"/>
+    <path d="M104 138 a34 34 0 0 1 34 -34 H168 V404 H138 a34 34 0 0 1 -34 -34 Z" fill="#484c92"/>
+    <g stroke="#dcdff3" stroke-width="5" stroke-linecap="round"><line x1="204" y1="170" x2="372" y2="170"/><line x1="204" y1="222" x2="372" y2="222"/><line x1="204" y1="274" x2="300" y2="274"/></g>
+    <circle cx="326" cy="326" r="84" fill="#f6bf26"/>
+    <circle cx="326" cy="326" r="84" fill="none" stroke="#ffffff" stroke-width="10"/>
+    <g stroke="#7a5200" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M296 282 L326 326 L356 282"/><line x1="326" y1="326" x2="326" y2="372"/><line x1="302" y1="337" x2="350" y2="337"/><line x1="302" y1="356" x2="350" y2="356"/></g>
+  </g>
+</svg>
