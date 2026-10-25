@@ -21,3 +21,13 @@ kakeibo-backup-*.json
 
 # Claude Code のローカル設定
 .claude/
+
+# らくな家計簿の変換（tools/convert-mmbak）：本人の実データ（.mmbak・変換後のJSON・レポート）はコミットしない。テスト用の架空データ（fixtures/）は除く
+tools/convert-mmbak/**/*.mmbak
+tools/convert-mmbak/**/*.json
+tools/convert-mmbak/**/*取り込みレポート*.md
+tools/convert-mmbak/out/
+tools/convert-mmbak/output/
+tools/convert-mmbak/__pycache__/
+!tools/convert-mmbak/fixtures/
+!tools/convert-mmbak/fixtures/**
