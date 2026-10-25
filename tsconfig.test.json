@@ -19,11 +19,18 @@
     "src/seedCategories.ts",
     "src/backup.ts",
     "src/importPreview.ts",
+    "src/orderUtils.ts",
+    "src/settingsLogic.ts",
+    "src/accountLogic.ts",
+    "src/categoryLogic.ts",
     "tests/fixtures.ts",
     "tests/dateUtils.test.ts",
     "tests/money.test.ts",
     "tests/seedCategories.test.ts",
     "tests/backup.test.ts",
-    "tests/importPreview.test.ts"
+    "tests/importPreview.test.ts",
+    "tests/accountLogic.test.ts",
+    "tests/categoryLogic.test.ts",
+    "tests/settingsLogic.test.ts"
   ]
 }

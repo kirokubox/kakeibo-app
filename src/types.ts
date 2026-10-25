@@ -60,7 +60,7 @@ export type TxSource = "manual" | "recurring" | "import";
 export interface Transaction extends Base {
   type: TxType;
   date: string; // YYYY-MM-DD
-  amount: number;
+  amount: number; // 残高修正（adjustment）だけ符号つき（増えたら正、減ったら負）。ほかの種類は正の数
   accountId: Id;
   toAccountId?: Id;
   fee?: number; // 振替の手数料

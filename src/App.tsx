@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { defaultSettings } from "./constants";
+import { AssetsView } from "./AssetsView";
 import { Icon } from "./Icon";
 import { SettingsView } from "./SettingsView";
 import { TABS, TabBar } from "./TabBar";
@@ -14,7 +15,7 @@ const PLACEHOLDERS: Record<TabId, { title: string; stage: string; body: string }
   entries: { title: "明細", stage: "段階3", body: "日別・週別・月別の明細を見て、タップして直せるようにします。" },
   summary: { title: "集計", stage: "段階8", body: "分類別の比較や月ごとの推移を見られるようにします。" },
   outlook: { title: "見通し", stage: "段階6", body: "給料日ごとに、3〜6か月先のお金の見通しを出します。" },
-  assets: { title: "資産", stage: "段階2", body: "資産ごとの残高と、使える資産の合計を出します。" },
+  assets: { title: "資産", stage: "", body: "" },
 };
 
 export default function App() {
@@ -66,6 +67,10 @@ export default function App() {
     );
   }
 
+  const tabBar = <TabBar current={tab} onSelect={setTab} />;
+
+  if (tab === "assets") return <AssetsView tabBar={tabBar} onOpenSettings={() => setShowSettings(true)} />;
+
   const current = TABS.find((t) => t.id === tab)!;
   const placeholder = PLACEHOLDERS[tab];
 
@@ -85,7 +90,7 @@ export default function App() {
           {!ready && !loadError && <p className="muted">データを準備しています…</p>}
         </section>
       </main>
-      <TabBar current={tab} onSelect={setTab} />
+      {tabBar}
     </div>
   );
 }

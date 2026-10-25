@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { SEED_GROUPS, buildSeedCategories } from "../src/seedCategories.js";
+import { buildBackup } from "../src/backup.js";
+import { SEED_TIMESTAMP, defaultSettings } from "../src/constants.js";
+import { indexExisting, planImport } from "../src/importPreview.js";
 import type { Category, TagMode } from "../src/types.js";
+import { emptyData } from "./fixtures.js";
 
 const NOW = "2026-10-25T00:00:00.000Z";
 const cats: Category[] = buildSeedCategories(NOW);
@@ -127,4 +131,24 @@ test("tagMode の割り当てが初期仕様 §4-3 と一致", () => {
 test("初期分類のidは何度作っても同じ（別の端末のバックアップを足しても二重にならない）", () => {
   assert.deepEqual(buildSeedCategories("2027-01-01T00:00:00.000Z").map((c) => c.id), cats.map((c) => c.id));
   assert.ok(SEED_GROUPS.length === parents.length);
+});
+
+test("初期分類は何度作っても createdAt / updatedAt が同じ固定値（deletedAt は null）", () => {
+  const a = buildSeedCategories();
+  const b = buildSeedCategories();
+  assert.deepEqual(a, b);
+  assert.ok(a.every((c) => c.createdAt === SEED_TIMESTAMP && c.updatedAt === SEED_TIMESTAMP && c.deletedAt === null));
+});
+
+test("名前を変えた初期分類を含むバックアップを、新しく初期分類を入れた入れ物へ足すと「更新する」になる", () => {
+  const source = emptyData();
+  source.categories = buildSeedCategories().map((c) =>
+    c.id === "seed:expense:食費" ? { ...c, name: "食費A", updatedAt: "2026-11-01T00:00:00.000Z" } : c,
+  );
+  const incoming = buildBackup(source, defaultSettings(), "2026-11-02T00:00:00.000Z");
+  const fresh = emptyData();
+  fresh.categories = buildSeedCategories();
+  const plan = planImport(incoming, indexExisting(fresh)).categories;
+  assert.deepEqual(plan.update.map((c) => c.id), ["seed:expense:食費"]);
+  assert.equal(plan.add.length, 0);
 });

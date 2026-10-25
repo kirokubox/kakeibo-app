@@ -1,6 +1,8 @@
 import type { Settings } from "./types.js";
 
-export const APP_VERSION = "0.1.0";
+export const APP_VERSION = "0.2.0";
+/** 初期分類の作成・更新時刻（固定）。別の端末で初期分類を入れても同じ時刻になり、本人が変えたもの（これより後）が追加読み込みで「新しい方」になる */
+export const SEED_TIMESTAMP = "2026-10-25T00:00:00.000Z";
 export const APP_NAME = "家計簿";
 export const BACKUP_APP_NAME = "kakeibo-app" as const;
 export const BACKUP_SCHEMA_VERSION = 1 as const;

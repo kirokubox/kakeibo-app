@@ -96,6 +96,17 @@ export async function saveRecord<K extends DataStoreName>(store: K, record: Data
   return stamped;
 }
 
+/** 複数のレコードを1つのトランザクションで書く（並べ替えなど。途中で失敗したら何も書かない）。updatedAt は現在時刻にする */
+export async function saveRecords<K extends DataStoreName>(store: K, records: DataStoreRecords[K][]): Promise<void> {
+  if (records.length === 0) return;
+  const now = nowIso();
+  const db = await openDb();
+  const tx = db.transaction(store, "readwrite");
+  const os = tx.objectStore(store);
+  for (const r of records) os.put({ ...r, updatedAt: now });
+  await done(tx);
+}
+
 /** 論理削除。deletedAt と updatedAt に現在時刻を入れる（データ自体は消さない） */
 export async function softDelete<K extends DataStoreName>(store: K, id: string): Promise<void> {
   const db = await openDb();
@@ -143,7 +154,7 @@ export async function seedCategoriesIfEmpty(): Promise<boolean> {
   const countReq = os.count();
   countReq.onsuccess = () => {
     if (countReq.result > 0) return;
-    for (const c of buildSeedCategories(nowIso())) os.put(c);
+    for (const c of buildSeedCategories()) os.put(c);
     seeded = true;
   };
   await done(tx);

@@ -1,5 +1,8 @@
 import { useRef, useState } from "react";
 import { backupFileName, parseBackup } from "./backup";
+import { SHIFT_LABELS } from "./accountLogic";
+import { ChoiceSheet } from "./BottomSheet";
+import { CategoriesView } from "./CategoriesView";
 import { APP_VERSION, STORE_LABELS } from "./constants";
 import { formatDateTimeJa, todayKey } from "./dateUtils";
 import { downloadTextFile } from "./fileUtils";
@@ -7,10 +10,13 @@ import { Icon } from "./Icon";
 import { indexExisting, planImport, recordsToWrite, totalsOf } from "./importPreview";
 import type { ImportPlan } from "./importPreview";
 import { formatYen } from "./money";
+import { NumberSheet } from "./NumberSheet";
+import { validateDefenseFund, validatePayday, validateReminderDays } from "./settingsLogic";
 import { exportBackup, getAllData, requestPersistentStorage, writeImported } from "./storage";
 import type { PersistenceState } from "./storage";
 import { DATA_STORE_NAMES } from "./types";
-import type { BackupFile, Settings } from "./types";
+import { useToast } from "./Toast";
+import type { BackupFile, BudgetMonthBoundary, HolidayShift, HomeMainFigure, Settings } from "./types";
 
 interface Props {
   settings: Settings;
@@ -27,7 +33,35 @@ interface Preview {
   plan: ImportPlan;
 }
 
-const SHIFT_LABELS = { before: "前の平日", after: "後の平日", none: "そのまま" } as const;
+type SettingSheet = "payday" | "shift" | "fund" | "boundary" | "figure" | "reminder";
+
+const SHIFT_OPTIONS: Array<{ value: HolidayShift; label: string }> = (["before", "after", "none"] as const).map((value) => ({ value, label: SHIFT_LABELS[value] }));
+const BOUNDARY_OPTIONS: Array<{ value: BudgetMonthBoundary; label: string; description: string }> = [
+  { value: "payday", label: "給料日から次の給料日の前日まで", description: "給料日で区切って予算を決めます" },
+  { value: "calendar", label: "暦月（1日〜末日）", description: "毎月1日から末日までで予算を決めます" },
+];
+const FIGURE_OPTIONS: Array<{ value: HomeMainFigure; label: string }> = [
+  { value: "remaining", label: "今週あと◯円" },
+  { value: "spent", label: "今週使った額" },
+];
+
+/** 設定の1行：項目名と今の値。タップで変える */
+function SettingRow({ label, value, onClick }: { label: string; value: string; onClick?: () => void }) {
+  const inner = (
+    <>
+      <span className="setting-label">{label}</span>
+      <span className="setting-value">{value}</span>
+      {onClick && <Icon name="chevron-right" size={18} />}
+    </>
+  );
+  return onClick ? (
+    <button type="button" className="setting-row" onClick={onClick}>
+      {inner}
+    </button>
+  ) : (
+    <div className="setting-row static">{inner}</div>
+  );
+}
 
 const PERSISTENCE_TEXT: Record<PersistenceState, string> = {
   granted: "許可されています",
@@ -42,6 +76,19 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
   const [preview, setPreview] = useState<Preview | null>(null);
   const [doAdd, setDoAdd] = useState(true);
   const [doUpdate, setDoUpdate] = useState(true);
+  const [page, setPage] = useState<null | "expense" | "income">(null);
+  const [sheet, setSheet] = useState<SettingSheet | null>(null);
+  const [toast, showToast] = useToast();
+
+  /** 変えたらすぐ保存して、短く知らせる */
+  const change = async (patch: Partial<Settings>, notice = "保存しました") => {
+    try {
+      await onSettingsChange({ ...settings, ...patch });
+      showToast(notice, notice.length > 20 ? 5000 : 2400);
+    } catch (error) {
+      setMessage({ kind: "error", text: `保存できませんでした：${error instanceof Error ? error.message : "不明なエラー"}` });
+    }
+  };
 
   const handleExport = async () => {
     setBusy(true);
@@ -107,6 +154,8 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
   const totals = preview ? totalsOf(preview.plan) : null;
   const nothingToWrite = totals !== null && (doAdd ? totals.add : 0) + (doUpdate ? totals.update : 0) === 0;
 
+  if (page) return <CategoriesView initialKind={page} onBack={() => setPage(null)} />;
+
   return (
     <>
       <header className="topbar">
@@ -130,7 +179,10 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
               <dd>{settings.lastBackupAt ? formatDateTimeJa(settings.lastBackupAt) : "まだ保存していません"}</dd>
             </div>
           </dl>
-          <p className="muted small">全部のデータを1つのファイルに保存します。定期的に保存してください。</p>
+          <div className="setting-list">
+            <SettingRow label="お知らせまでの日数" value={`${settings.backupReminderDays}日`} onClick={() => setSheet("reminder")} />
+          </div>
+          <p className="muted small">全部のデータを1つのファイルに保存します。定期的に保存してください。お知らせはホームに出します（段階6で付けます）。</p>
           <div className="actions">
             <button type="button" className="primary-btn" disabled={busy} onClick={handleExport}>
               <Icon name="download" size={18} />
@@ -236,34 +288,30 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
         </section>
 
         <section className="card">
-          <h2>今の設定</h2>
-          <p className="muted small">変更できる画面は段階2で作ります。</p>
-          <dl className="rows">
-            <div className="row">
-              <dt>給料日</dt>
-              <dd>毎月{settings.payday}日（休日は{SHIFT_LABELS[settings.paydayHolidayShift]}）</dd>
-            </div>
-            <div className="row">
-              <dt>生活防衛資金</dt>
-              <dd>{formatYen(settings.defenseFund)}</dd>
-            </div>
-            <div className="row">
-              <dt>月の区切り</dt>
-              <dd>{settings.budgetMonthBoundary === "payday" ? "給料日から次の給料日の前日まで" : "毎月1日から末日まで"}</dd>
-            </div>
-            <div className="row">
-              <dt>ホームの大きい数字</dt>
-              <dd>{settings.homeMainFigure === "remaining" ? "今週あと◯円" : "今週使った額"}</dd>
-            </div>
-            <div className="row">
-              <dt>週の始まり</dt>
-              <dd>月曜</dd>
-            </div>
-            <div className="row">
-              <dt>バックアップのお知らせ</dt>
-              <dd>最後の保存から{settings.backupReminderDays}日</dd>
-            </div>
-          </dl>
+          <h2>分類</h2>
+          <div className="setting-list">
+            <SettingRow label="支出の分類" value="" onClick={() => setPage("expense")} />
+            <SettingRow label="収入の分類" value="" onClick={() => setPage("income")} />
+          </div>
+        </section>
+
+        <section className="card">
+          <h2>給料日と予算</h2>
+          <div className="setting-list">
+            <SettingRow label="給料日" value={`毎月${settings.payday}日`} onClick={() => setSheet("payday")} />
+            <SettingRow label="給料日が休日なら" value={SHIFT_LABELS[settings.paydayHolidayShift]} onClick={() => setSheet("shift")} />
+            <SettingRow label="生活防衛資金" value={formatYen(settings.defenseFund)} onClick={() => setSheet("fund")} />
+            <SettingRow label="月の予算の区切り" value={settings.budgetMonthBoundary === "payday" ? "給料日から" : "暦月"} onClick={() => setSheet("boundary")} />
+          </div>
+          <p className="muted small">生活防衛資金は、使える額から先に外しておくお金です。集計の「月」は、どちらを選んでも暦月です。</p>
+        </section>
+
+        <section className="card">
+          <h2>表示</h2>
+          <div className="setting-list">
+            <SettingRow label="ホームの一番大きい数字" value={settings.homeMainFigure === "remaining" ? "今週あと◯円" : "今週使った額"} onClick={() => setSheet("figure")} />
+            <SettingRow label="週の始まり" value="月曜" />
+          </div>
         </section>
 
         <section className="card">
@@ -276,6 +324,34 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
           </dl>
         </section>
       </main>
+
+      {sheet === "payday" && (
+        <NumberSheet title="給料日" description="1〜31日。その月にない日は月末になります" kind="days" value={settings.payday} validate={(n) => validatePayday(n)} onSave={(n) => change({ payday: n })} onClose={() => setSheet(null)} />
+      )}
+      {sheet === "fund" && (
+        <NumberSheet title="生活防衛資金" description="使える額から先に外しておくお金です" kind="yen" value={settings.defenseFund} validate={(n) => validateDefenseFund(n)} onSave={(n) => change({ defenseFund: n })} onClose={() => setSheet(null)} />
+      )}
+      {sheet === "reminder" && (
+        <NumberSheet title="お知らせまでの日数" description="最後にバックアップを保存してから、この日数がたったらお知らせします（1〜90日）" kind="days" value={settings.backupReminderDays} validate={(n) => validateReminderDays(n)} onSave={(n) => change({ backupReminderDays: n })} onClose={() => setSheet(null)} />
+      )}
+      {sheet === "shift" && (
+        <ChoiceSheet title="給料日が休日なら" options={SHIFT_OPTIONS} value={settings.paydayHolidayShift} onSelect={(v) => void change({ paydayHolidayShift: v })} onClose={() => setSheet(null)} />
+      )}
+      {sheet === "boundary" && (
+        <ChoiceSheet
+          title="月の予算の区切り"
+          options={BOUNDARY_OPTIONS}
+          value={settings.budgetMonthBoundary}
+          onSelect={(v) => {
+            if (v !== settings.budgetMonthBoundary) void change({ budgetMonthBoundary: v }, "次の区切りから新しい区切りで予算を決めます。これまでの予算の記録は変わりません");
+          }}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet === "figure" && (
+        <ChoiceSheet title="ホームの一番大きい数字" options={FIGURE_OPTIONS} value={settings.homeMainFigure} onSelect={(v) => void change({ homeMainFigure: v })} onClose={() => setSheet(null)} />
+      )}
+      {toast}
     </>
   );
 }

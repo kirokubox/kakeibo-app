@@ -1,3 +1,4 @@
+import { SEED_TIMESTAMP } from "./constants.js";
 import type { Category, CategoryKind, TagMode } from "./types.js";
 
 // 分類の初期データ。
@@ -62,7 +63,7 @@ export function seedCategoryId(kind: CategoryKind, parent: string, child?: strin
 }
 
 /** 初期の分類を作る（大分類→小分類の順。order は同じ親の中での並び順） */
-export function buildSeedCategories(now: string): Category[] {
+export function buildSeedCategories(now: string = SEED_TIMESTAMP): Category[] {
   const result: Category[] = [];
   const counters: Record<CategoryKind, number> = { expense: 0, income: 0 };
   for (const group of SEED_GROUPS) {
