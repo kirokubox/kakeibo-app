@@ -21,6 +21,7 @@ export function buildBackup(data: DataSet, settings: Settings, exportedAt: strin
     plannedExpenses: data.plannedExpenses,
     budgetSnapshots: data.budgetSnapshots,
     cardStatements: data.cardStatements,
+    subscriptionReviews: data.subscriptionReviews,
     settings,
   };
 }
@@ -321,6 +322,20 @@ const checkBudget: Check = (v, at) => {
 const checkStatement: Check = (v, at) =>
   first(reqId(v, "cardAccountId", at), reqDate(v, "paymentDate", at), reqYen(v, "actualAmount", at), reqYen(v, "diff", at));
 
+const checkReview: Check = (v, at) => {
+  let itemsProblem: string | null = null;
+  if (!Array.isArray(v.items)) itemsProblem = `${at}.items が配列ではありません`;
+  else {
+    for (let i = 0; i < v.items.length && itemsProblem === null; i++) {
+      const item: unknown = v.items[i];
+      const p = `${at}.items[${i}]`;
+      if (!isRecord(item)) itemsProblem = `${p} がオブジェクトではありません`;
+      else itemsProblem = first(reqStr(item, "content", p), reqEnum(item, "decision", ["keep", "cancel"], p), reqYen(item, "amount", p));
+    }
+  }
+  return first(reqDate(v, "reviewedAt", at), itemsProblem);
+};
+
 const STORE_CHECKS: { [K in DataStoreName]: Check } = {
   accounts: checkAccount,
   categories: checkCategory,
@@ -333,7 +348,17 @@ const STORE_CHECKS: { [K in DataStoreName]: Check } = {
   plannedExpenses: checkPlanned,
   budgetSnapshots: checkBudget,
   cardStatements: checkStatement,
+  subscriptionReviews: checkReview,
 };
+
+/** 変換スクリプトが付ける取り込み元（任意）。あれば type・label は文字列 */
+function checkSource(s: unknown): string | null {
+  if (s === undefined) return null;
+  if (!isRecord(s)) return "source がオブジェクトではありません";
+  const at = "source";
+  const optStr = (key: string) => opt(s, key, at, isStr, "文字列");
+  return first(reqStr(s, "type", at), reqStr(s, "label", at), optStr("fileName"), optStr("convertedAt"), optStr("importFrom"));
+}
 
 function checkSettings(s: unknown): string | null {
   if (!isRecord(s)) return "settings がオブジェクトではありません";
@@ -351,14 +376,20 @@ function checkSettings(s: unknown): string | null {
 }
 
 /** 読み込んだJSON（parse済み）がバックアップとして正しいか確かめる。だめなら理由を返し、何も保存しない */
-export function validateBackup(data: unknown): ValidationResult {
+export function validateBackup(input: unknown): ValidationResult {
   const fail = (reason: string): ValidationResult => ({ ok: false, reason });
-  if (!isRecord(data)) return fail("バックアップファイルの形式ではありません（オブジェクトではありません）");
+  if (!isRecord(input)) return fail("バックアップファイルの形式ではありません（オブジェクトではありません）");
+  let data: Rec = input;
   if (data.app !== BACKUP_APP_NAME) return fail(`${BACKUP_APP_NAME} のバックアップではありません（app が "${String(data.app)}" です）`);
   if (data.schemaVersion !== BACKUP_SCHEMA_VERSION) {
     return fail(`このバージョンでは読み込めません（schemaVersion が ${String(data.schemaVersion)} です。読めるのは ${BACKUP_SCHEMA_VERSION} だけです）`);
   }
   if (!isIsoDateTime(data.exportedAt)) return fail("exportedAt が時刻つきの日時ではありません");
+
+  // 版2より前に書き出したファイルには subscriptionReviews が無い。空として読む
+  if (data.subscriptionReviews === undefined) data = { ...data, subscriptionReviews: [] };
+  const sourceProblem = checkSource(data.source);
+  if (sourceProblem !== null) return fail(sourceProblem);
 
   for (const store of DATA_STORE_NAMES) {
     const list = data[store];

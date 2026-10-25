@@ -4,15 +4,16 @@ import { planBudgets, planRecalcMonth, planRecalcWeek } from "./budgetLogic";
 import type { BudgetContext } from "./budgetLogic";
 import type { OutlookData } from "./outlookLogic";
 import { getAll, newBase, saveStores } from "./storage";
-import type { BudgetSnapshot, Settings } from "./types";
+import type { BudgetSnapshot, Settings, SubscriptionReview } from "./types";
 
 /** 使える額・予算・見通しに必要なデータ一式（論理削除したものも含む） */
 export interface BudgetBundle extends OutlookData {
   budgetSnapshots: BudgetSnapshot[];
+  subscriptionReviews: SubscriptionReview[];
 }
 
 export async function loadBudgetBundle(): Promise<BudgetBundle> {
-  const [accounts, categories, transactions, recurrings, payrolls, reserves, reserveMoves, plannedExpenses, budgetSnapshots] = await Promise.all([
+  const [accounts, categories, transactions, recurrings, payrolls, reserves, reserveMoves, plannedExpenses, budgetSnapshots, subscriptionReviews] = await Promise.all([
     getAll("accounts"),
     getAll("categories"),
     getAll("transactions"),
@@ -22,8 +23,9 @@ export async function loadBudgetBundle(): Promise<BudgetBundle> {
     getAll("reserveMoves"),
     getAll("plannedExpenses"),
     getAll("budgetSnapshots"),
+    getAll("subscriptionReviews"),
   ]);
-  return { accounts, categories, transactions, recurrings, payrolls, reserves, reserveMoves, plannedExpenses, budgetSnapshots };
+  return { accounts, categories, transactions, recurrings, payrolls, reserves, reserveMoves, plannedExpenses, budgetSnapshots, subscriptionReviews };
 }
 
 let chain: Promise<unknown> = Promise.resolve();

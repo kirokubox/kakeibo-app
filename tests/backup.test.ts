@@ -219,3 +219,46 @@ test("段階6で足した項目：予定出費の済み(doneAt)と、予算の�
     assert.match(reason(b), re, label);
   }
 });
+
+test("サブスクの見直し（subscriptionReviews）の検証：項目の形・日付・金額", () => {
+  const checks: Array<[string, (b: Any) => void, RegExp]> = [
+    ["日付", (b) => { b.subscriptionReviews[0].reviewedAt = "2026-13-01"; }, /subscriptionReviews\[0\]\.reviewedAt/],
+    ["項目が配列でない", (b) => { b.subscriptionReviews[0].items = "x"; }, /subscriptionReviews\[0\]\.items/],
+    ["選び", (b) => { b.subscriptionReviews[0].items[0].decision = "stop"; }, /items\[0\]\.decision/],
+    ["金額が整数でない", (b) => { b.subscriptionReviews[0].items[0].amount = 99.5; }, /items\[0\]\.amount/],
+    ["内容が文字列でない", (b) => { b.subscriptionReviews[0].items[0].content = 1; }, /items\[0\]\.content/],
+    ["配列でない", (b) => { b.subscriptionReviews = {}; }, /subscriptionReviews が配列/],
+  ];
+  for (const [label, mutate, re] of checks) {
+    const b: Any = viaJson(sampleBackup());
+    mutate(b);
+    assert.match(reason(b), re, label);
+  }
+  assert.equal(validateBackup(viaJson(sampleBackup())).ok, true);
+});
+
+test("版2より前のバックアップ（subscriptionReviews が無い）も読める。空として扱う", () => {
+  const old: Any = viaJson(sampleBackup());
+  delete old.subscriptionReviews;
+  const r = validateBackup(old);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.deepEqual(r.backup.subscriptionReviews, []);
+});
+
+test("取り込み元（source）は任意。あれば type・label が文字列", () => {
+  const withSource: Any = viaJson(sampleBackup());
+  withSource.source = { type: "rakuna-kakeibo-mmbak", label: "らくな家計簿", fileName: "test.mmbak", convertedAt: "2026-10-26T00:00:00.000Z", importFrom: "2024-01-01" };
+  const r = validateBackup(withSource);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.equal(r.backup.source?.label, "らくな家計簿");
+  assert.equal(validateBackup(viaJson(sampleBackup())).ok, true); // 無くてもよい
+  const bad1: Any = viaJson(sampleBackup());
+  bad1.source = "らくな家計簿";
+  assert.match(reason(bad1), /source がオブジェクト/);
+  const bad2: Any = viaJson(sampleBackup());
+  bad2.source = { type: "x" };
+  assert.match(reason(bad2), /source\.label/);
+  const bad3: Any = viaJson(sampleBackup());
+  bad3.source = { type: "x", label: "y", importFrom: 20240101 };
+  assert.match(reason(bad3), /source\.importFrom/);
+});

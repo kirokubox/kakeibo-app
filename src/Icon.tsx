@@ -101,6 +101,13 @@ const ICONS = {
       <path d="m7 10 5 5 5-5" />
     </>
   ),
+  // 虫めがね（Lucide の search）
+  search: (
+    <>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </>
+  ),
   upload: (
     <>
       <path d="M12 3v12" />

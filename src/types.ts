@@ -13,6 +13,7 @@ export const DATA_STORE_NAMES = [
   "plannedExpenses",
   "budgetSnapshots",
   "cardStatements",
+  "subscriptionReviews",
 ] as const;
 export type DataStoreName = (typeof DATA_STORE_NAMES)[number];
 
@@ -164,6 +165,19 @@ export interface CardStatement extends Base {
   diff: number;
 }
 
+/** サブスクの見直しの記録（reviewedAt の日に、内容ごとに「続ける／やめる」を選んだ） */
+export type SubscriptionDecision = "keep" | "cancel";
+export interface SubscriptionReviewItem {
+  content: string;
+  decision: SubscriptionDecision;
+  /** 見直したときの直近の金額 */
+  amount: number;
+}
+export interface SubscriptionReview extends Base {
+  reviewedAt: string; // YYYY-MM-DD
+  items: SubscriptionReviewItem[];
+}
+
 export type BudgetMonthBoundary = "payday" | "calendar";
 export type HomeMainFigure = "remaining" | "spent";
 /** 設定。1端末に1つだけ持つ（IndexedDB の settings ストア、キー "app"）。バックアップには入るが、追加インポートでは上書きしない */
@@ -191,10 +205,20 @@ export interface DataStoreRecords {
   plannedExpenses: PlannedExpense;
   budgetSnapshots: BudgetSnapshot;
   cardStatements: CardStatement;
+  subscriptionReviews: SubscriptionReview;
 }
 
 /** 全データストアの中身 */
 export type DataSet = { [K in DataStoreName]: DataStoreRecords[K][] };
+
+/** 変換スクリプトが付ける「取り込み元」（任意。追加インポートの確認に出す） */
+export interface BackupSource {
+  type: string;
+  label: string;
+  fileName?: string;
+  convertedAt?: string;
+  importFrom?: string;
+}
 
 /** バックアップファイル（schemaVersion 1）。論理削除したものも含む */
 export interface BackupFile extends DataSet {
@@ -202,4 +226,6 @@ export interface BackupFile extends DataSet {
   schemaVersion: 1;
   exportedAt: string;
   settings: Settings;
+  /** 変換スクリプトで作ったファイルだけが持つ */
+  source?: BackupSource;
 }

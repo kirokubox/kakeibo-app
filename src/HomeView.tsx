@@ -12,6 +12,7 @@ import { OutstandingView } from "./OutstandingView";
 import { ReservesView } from "./ReservesView";
 import { estimatedTransactions } from "./recurrence";
 import { outstandingGroups, outstandingSummary } from "./reimburseLogic";
+import { isReviewDue } from "./subscriptionLogic";
 import { useToast } from "./Toast";
 import { TxRow } from "./TxRow";
 import { UsableCard } from "./UsableCard";
@@ -30,13 +31,15 @@ interface Props {
   onOpenPayroll: () => void;
   /** 明細タブへ */
   onGoEntries: () => void;
+  /** 集計タブへ（サブスク見直しのお知らせ） */
+  onGoSummary: () => void;
   onChanged: () => void;
 }
 
 type Page = "home" | "reserves" | "outstanding";
 
 /** ホーム：今週あと◯円、給料日までに使える額、今月の予算、取り置き、お知らせ、最近の明細 */
-export function HomeView({ tabBar, today, version, settings, onOpenSettings, onAdd, onEdit, onOpenPayroll, onGoEntries, onChanged }: Props) {
+export function HomeView({ tabBar, today, version, settings, onOpenSettings, onAdd, onEdit, onOpenPayroll, onGoEntries, onGoSummary, onChanged }: Props) {
   const [page, setPage] = useState<Page>("home");
   const [adjusting, setAdjusting] = useState<Transaction | null>(null);
   const [toast, showToast] = useToast();
@@ -87,6 +90,9 @@ export function HomeView({ tabBar, today, version, settings, onOpenSettings, onA
     const backup = backupNotice(settings, summary.hasTransactions, today);
     if (backup) notices.push({ key: "backup", text: backup, action: { label: "保存する", run: onOpenSettings } });
     if (estimated.length > 0) notices.push({ key: "estimated", text: `見込みのままの明細 ${estimated.length}件`, action: { label: "直す", run: () => onEdit(estimated[0]) } });
+    if (bundle && isReviewDue(bundle.subscriptionReviews, bundle.transactions, today)) {
+      notices.push({ key: "subscription", text: "サブスクを見直す時期です", action: { label: "見直す", run: onGoSummary } });
+    }
     if (summary.salaryPending) {
       notices.push({ key: "salary", text: `${formatMonthDayWeekday(summary.salaryPending)}の給料明細がまだです`, action: { label: "入れる", run: onOpenPayroll } });
     }

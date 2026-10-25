@@ -20,6 +20,7 @@ export function emptyData(): DataSet {
     plannedExpenses: [],
     budgetSnapshots: [],
     cardStatements: [],
+    subscriptionReviews: [],
   };
 }
 
@@ -82,6 +83,7 @@ export function sampleData(): DataSet {
   d.plannedExpenses = [{ id: "pe1", createdAt: T0, updatedAt: T0, deletedAt: null, name: "テスト予定", month: "2026-12", amount: 8000 }];
   d.budgetSnapshots = [{ id: "b1", createdAt: T0, updatedAt: T0, deletedAt: null, period: "week", start: "2026-10-05", end: "2026-10-11", amount: 21000, basis: { usable: 150000 } }];
   d.cardStatements = [{ id: "cs1", createdAt: T0, updatedAt: T0, deletedAt: null, cardAccountId: "a2", paymentDate: "2026-10-27", actualAmount: 12345, diff: 0 }];
+  d.subscriptionReviews = [{ id: "sr1", createdAt: T0, updatedAt: T0, deletedAt: null, reviewedAt: "2026-10-20", items: [{ content: "テスト配信", decision: "keep", amount: 990 }] }];
   return d;
 }
 

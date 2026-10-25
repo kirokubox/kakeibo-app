@@ -1,12 +1,12 @@
 {
   "name": "kakeibo-app",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.8.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
-    "test": "tsc -p tsconfig.test.json && node --test .test-build/tests/dateUtils.test.js .test-build/tests/money.test.js .test-build/tests/seedCategories.test.js .test-build/tests/backup.test.js .test-build/tests/importPreview.test.js .test-build/tests/accountLogic.test.js .test-build/tests/categoryLogic.test.js .test-build/tests/settingsLogic.test.js .test-build/tests/calculator.test.js .test-build/tests/periodLogic.test.js .test-build/tests/entryLogic.test.js .test-build/tests/suggestLogic.test.js .test-build/tests/transferLogic.test.js .test-build/tests/reimburseLogic.test.js .test-build/tests/adjustLogic.test.js .test-build/tests/businessDay.test.js .test-build/tests/recurrence.test.js .test-build/tests/scheduleLogic.test.js .test-build/tests/payrollLogic.test.js .test-build/tests/reserveLogic.test.js .test-build/tests/plannedLogic.test.js .test-build/tests/budgetLogic.test.js .test-build/tests/outlookLogic.test.js",
+    "test": "tsc -p tsconfig.test.json && node --test .test-build/tests/dateUtils.test.js .test-build/tests/money.test.js .test-build/tests/seedCategories.test.js .test-build/tests/backup.test.js .test-build/tests/importPreview.test.js .test-build/tests/accountLogic.test.js .test-build/tests/categoryLogic.test.js .test-build/tests/settingsLogic.test.js .test-build/tests/calculator.test.js .test-build/tests/periodLogic.test.js .test-build/tests/entryLogic.test.js .test-build/tests/suggestLogic.test.js .test-build/tests/transferLogic.test.js .test-build/tests/reimburseLogic.test.js .test-build/tests/adjustLogic.test.js .test-build/tests/businessDay.test.js .test-build/tests/recurrence.test.js .test-build/tests/scheduleLogic.test.js .test-build/tests/payrollLogic.test.js .test-build/tests/reserveLogic.test.js .test-build/tests/plannedLogic.test.js .test-build/tests/budgetLogic.test.js  .test-build/tests/outlookLogic.test.js .test-build/tests/dbMigration.test.js .test-build/tests/searchLogic.test.js .test-build/tests/summaryLogic.test.js .test-build/tests/subscriptionLogic.test.js .test-build/tests/aiMarkdown.test.js .test-build/tests/reconcileLogic.test.js .test-build/tests/csvImport.test.js",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

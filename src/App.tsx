@@ -5,7 +5,6 @@ import { ensureBudgets } from "./budgetStore";
 import { EntriesView } from "./EntriesView";
 import { EntryView } from "./EntryView";
 import type { EntryMode } from "./EntryView";
-import { Fab } from "./Fab";
 import { HomeView } from "./HomeView";
 import { OutlookView } from "./OutlookView";
 import { todayKey } from "./dateUtils";
@@ -13,22 +12,13 @@ import { PayrollEntryView } from "./PayrollEntryView";
 import { RecurringLabelsContext, generateDueRecurrings, loadRecurringLabels } from "./recurringStore";
 import { getSuggestIndex } from "./suggestStore";
 import { useToast } from "./Toast";
-import { Icon } from "./Icon";
 import { SettingsView } from "./SettingsView";
-import { TABS, TabBar } from "./TabBar";
+import { SummaryView } from "./SummaryView";
+import { TabBar } from "./TabBar";
 import type { TabId } from "./TabBar";
 import { getSettings, requestPersistentStorage, saveSettings, seedCategoriesIfEmpty } from "./storage";
 import type { PersistenceState } from "./storage";
 import type { Id, Settings, Transaction } from "./types";
-
-/** 未実装のタブに出す案内（どの段階で作るか） */
-const PLACEHOLDERS: Record<TabId, { title: string; stage: string; body: string }> = {
-  home: { title: "ホーム", stage: "", body: "" },
-  entries: { title: "明細", stage: "段階3", body: "" },
-  summary: { title: "集計", stage: "段階8", body: "分類別の比較や月ごとの推移を見られるようにします。" },
-  outlook: { title: "見通し", stage: "", body: "" },
-  assets: { title: "資産", stage: "", body: "" },
-};
 
 /** 給料明細の入力画面を開く指定（payrollId が null ならひな形を選ぶ。batchId があれば1枚まるごと直す） */
 interface PayrollTarget {
@@ -154,7 +144,7 @@ export default function App() {
   const entryOverlay = entry && (
     <div className="screen-overlay">
       <EntryView
-        key={entry.kind === "new" ? `new-${entry.date}-${entry.transfer ? "t" : ""}` : entry.kind === "recurring" ? `rec-${entry.rec.id}` : `${entry.kind}-${entry.tx.id}`}
+        key={entry.kind === "new" ? `new-${entry.date}-${entry.transfer ? "t" : ""}-${entry.prefill?.content ?? ""}-${entry.prefill?.amount ?? ""}` : entry.kind === "recurring" ? `rec-${entry.rec.id}` : `${entry.kind}-${entry.tx.id}`}
         mode={entry}
         today={today}
         showToast={showToast}
@@ -246,6 +236,7 @@ export default function App() {
             onEdit={openEdit}
             onOpenPayroll={() => openPayroll({})}
             onGoEntries={() => setTab("entries")}
+            onGoSummary={() => setTab("summary")}
             onChanged={bump}
           />
           {overlays}
@@ -262,27 +253,9 @@ export default function App() {
       );
     }
 
-    const current = TABS.find((t) => t.id === tab)!;
-    const placeholder = PLACEHOLDERS[tab];
-
     return (
       <div className="app">
-        <header className="topbar">
-          <h1 className="topbar-title">{current.label}</h1>
-          <button type="button" className="icon-btn" aria-label="設定" onClick={() => setShowSettings(true)}>
-            <Icon name="settings" size={22} />
-          </button>
-        </header>
-        <main className="content">
-          {loadError && <p className="notice danger" role="alert">{loadError}</p>}
-          <section className="placeholder">
-            <p className="placeholder-stage">{placeholder.stage}で作ります</p>
-            <p className="placeholder-body">{placeholder.body}</p>
-            {!ready && !loadError && <p className="muted">データを準備しています…</p>}
-          </section>
-        </main>
-        <Fab onClick={() => openNew(today)} />
-        {tabBar}
+        <SummaryView tabBar={tabBar} today={today} version={dataVersion} onOpenSettings={() => setShowSettings(true)} onEdit={openEdit} onChanged={bump} />
         {overlays}
       </div>
     );
@@ -290,6 +263,11 @@ export default function App() {
 
   return (
     <RecurringLabelsContext.Provider value={recurringLabels}>
+      {loadError && (
+        <p className="notice danger app-error" role="alert">
+          {loadError}
+        </p>
+      )}
       {body}
       {toast}
     </RecurringLabelsContext.Provider>

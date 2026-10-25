@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { AiExportCard } from "./AiExportCard";
 import { backupFileName, parseBackup } from "./backup";
 import { SHIFT_LABELS } from "./accountLogic";
 import { ChoiceSheet } from "./BottomSheet";
@@ -7,7 +8,7 @@ import { APP_VERSION, STORE_LABELS } from "./constants";
 import { formatDateTimeJa, todayKey } from "./dateUtils";
 import { downloadTextFile } from "./fileUtils";
 import { Icon } from "./Icon";
-import { indexExisting, planImport, recordsToWrite, totalsOf } from "./importPreview";
+import { indexExisting, planImport, recordsToWrite, sourceNote, totalsOf } from "./importPreview";
 import type { ImportPlan } from "./importPreview";
 import { resetSuggestIndex } from "./suggestStore";
 import { formatYen } from "./money";
@@ -20,7 +21,7 @@ import { exportBackup, getAllData, requestPersistentStorage, writeImported } fro
 import type { PersistenceState } from "./storage";
 import { DATA_STORE_NAMES } from "./types";
 import { useToast } from "./Toast";
-import type { BackupFile, BudgetMonthBoundary, HolidayShift, HomeMainFigure, Settings } from "./types";
+import type { BackupFile, BackupSource, BudgetMonthBoundary, HolidayShift, HomeMainFigure, Settings } from "./types";
 
 interface Props {
   settings: Settings;
@@ -35,6 +36,8 @@ interface Preview {
   exportedAt: string;
   backup: BackupFile;
   plan: ImportPlan;
+  /** 変換スクリプトで作ったファイルの取り込み元 */
+  source?: BackupSource;
 }
 
 type SettingSheet = "payday" | "shift" | "fund" | "boundary" | "figure" | "reminder";
@@ -123,7 +126,7 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
         return;
       }
       const plan = planImport(result.backup, indexExisting(await getAllData()));
-      setPreview({ fileName: file.name, exportedAt: result.backup.exportedAt, backup: result.backup, plan });
+      setPreview({ fileName: file.name, exportedAt: result.backup.exportedAt, backup: result.backup, plan, source: result.backup.source });
       setDoAdd(true);
       setDoUpdate(true);
     } catch (error) {
@@ -217,7 +220,7 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
           <div className="setting-list">
             <SettingRow label="お知らせまでの日数" value={`${settings.backupReminderDays}日`} onClick={() => setSheet("reminder")} />
           </div>
-          <p className="muted small">全部のデータを1つのファイルに保存します。定期的に保存してください。お知らせはホームに出します（段階6で付けます）。</p>
+          <p className="muted small">全部のデータを1つのファイルに保存します。定期的に保存してください。お知らせはホームに出します。</p>
           <div className="actions">
             <button type="button" className="primary-btn" disabled={busy} onClick={handleExport}>
               <Icon name="download" size={18} />
@@ -243,6 +246,7 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
               <p className="muted small">
                 {preview.fileName}（{formatDateTimeJa(preview.exportedAt)} 保存）。まだ何も保存していません。
               </p>
+              {sourceNote(preview.source, preview.plan.transactions.total) && <p className="source-note">{sourceNote(preview.source, preview.plan.transactions.total)}</p>}
               <div className="table-scroll">
                 <table className="data-table">
                   <thead>
@@ -300,6 +304,8 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
             </div>
           )}
         </section>
+
+        <AiExportCard />
 
         <section className="card">
           <h2>データの保護</h2>

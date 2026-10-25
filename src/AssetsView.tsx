@@ -166,6 +166,7 @@ export function AssetsView({ tabBar, today, version, onOpenSettings, onEdit, onO
           onBack={() => setMode({ page: from })}
           onEditTx={onEdit}
           onEditAccount={() => setMode({ page: "edit", account: detailAccount, from: mode })}
+          onOpenEntry={onOpenEntry}
           onRecordDebit={() => {
             const r = prepareCardDebit(detailAccount, active, balances.get(detailAccount.id) ?? 0, today);
             onOpenEntry({ kind: "new", date: today, transfer: r });

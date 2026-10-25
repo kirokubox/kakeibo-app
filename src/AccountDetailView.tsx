@@ -6,6 +6,9 @@ import { initialMonthCount, monthBlocks, runningBalances } from "./adjustLogic";
 import { DayGroup } from "./DayGroup";
 import { Icon } from "./Icon";
 import { KebabMenu } from "./KebabMenu";
+import type { EntryMode } from "./EntryView";
+import { ReconcileView } from "./ReconcileView";
+import { StatementHistoryView } from "./StatementHistoryView";
 import { formatYen } from "./money";
 import { groupByDay, monthTitle } from "./periodLogic";
 import { getAccountTransactions, getAll } from "./storage";
@@ -28,18 +31,22 @@ interface Props {
   onEditAccount: () => void;
   /** カードの「引き落としを記録」 */
   onRecordDebit: () => void;
+  /** 入力画面を開く（カードの照合で「支出として入れる」） */
+  onOpenEntry: (mode: EntryMode) => void;
   /** 残高修正を保存・削除したあと */
   onChanged: () => void;
 }
 
 /** 資産の明細：その資産の残高と、その資産が出てくる明細を月ごとに新しい順で */
-export function AccountDetailView({ account, accounts, balance, today, version, showToast, onBack, onEditTx, onEditAccount, onRecordDebit, onChanged }: Props) {
+export function AccountDetailView({ account, accounts, balance, today, version, showToast, onBack, onEditTx, onEditAccount, onRecordDebit, onOpenEntry, onChanged }: Props) {
   const [txs, setTxs] = useState<Transaction[] | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadError, setLoadError] = useState("");
   const [shown, setShown] = useState<number | null>(null);
   const [adjust, setAdjust] = useState<AdjustMode | null>(null);
   const [tick, setTick] = useState(0);
+  /** カードの照合・照合の履歴（この資産の明細の下の画面） */
+  const [sub, setSub] = useState<null | "reconcile" | "history">(null);
   const sentinel = useRef<HTMLDivElement>(null);
   const isCard = account.group === "card";
 
@@ -84,6 +91,41 @@ export function AccountDetailView({ account, accounts, balance, today, version, 
     else onEditTx(tx);
   };
 
+  if (sub === "reconcile" && isCard) {
+    return (
+      <ReconcileView
+        card={account}
+        accounts={accounts}
+        today={today}
+        version={version + tick}
+        showToast={showToast}
+        onBack={() => setSub(null)}
+        onEditTx={onEditTx}
+        onOpenEntry={onOpenEntry}
+        onChanged={() => {
+          setTick((n) => n + 1);
+          onChanged();
+        }}
+      />
+    );
+  }
+  if (sub === "history" && isCard) {
+    return (
+      <StatementHistoryView
+        card={account}
+        accounts={accounts}
+        version={version + tick}
+        showToast={showToast}
+        onBack={() => setSub(null)}
+        onEditTx={onEditTx}
+        onChanged={() => {
+          setTick((n) => n + 1);
+          onChanged();
+        }}
+      />
+    );
+  }
+
   const note = cardNote(account, accounts);
   const unpaid = unpaidAmount(balance);
 
@@ -94,7 +136,7 @@ export function AccountDetailView({ account, accounts, balance, today, version, 
           <Icon name="chevron-left" size={22} />
         </button>
         <h1 className="topbar-title">{account.name}</h1>
-        <KebabMenu items={[{ label: "編集", onSelect: onEditAccount }]} />
+        <KebabMenu items={[{ label: "編集", onSelect: onEditAccount }, ...(isCard ? [{ label: "照合の履歴", onSelect: () => setSub("history") }] : [])]} />
       </header>
       <main className="content">
         <section className="card summary account-head" aria-label="残高">
@@ -103,11 +145,16 @@ export function AccountDetailView({ account, accounts, balance, today, version, 
           {isCard && <p className="account-unpaid">未払い {formatYen(unpaid)}</p>}
           {note && <p className="list-sub">{note}</p>}
           {isCard && nextDebitText(account, today) && <p className="list-sub">{nextDebitText(account, today)}</p>}
-          {isCard && <p className="field-hint">請求額は、利用日から2〜3か月遅れて載るものがあります。照合は段階8で作ります。</p>}
+          {isCard && <p className="field-hint">請求額は、利用日から2〜3か月遅れて載るものがあります。「照合」で、請求額と明細を合わせられます。</p>}
           <div className="actions">
             <button type="button" className="secondary-btn" onClick={() => setAdjust({ kind: "new" })}>
               残高を合わせる
             </button>
+            {isCard && (
+              <button type="button" className="secondary-btn" onClick={() => setSub("reconcile")}>
+                照合
+              </button>
+            )}
             {isCard && (
               <button type="button" className="primary-btn" onClick={onRecordDebit}>
                 引き落としを記録

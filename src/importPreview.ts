@@ -1,5 +1,5 @@
 import { DATA_STORE_NAMES } from "./types.js";
-import type { BackupFile, Base, DataSet, DataStoreName, DataStoreRecords } from "./types.js";
+import type { BackupFile, BackupSource, Base, DataSet, DataStoreName, DataStoreRecords } from "./types.js";
 
 // 追加インポートの差分計算（データ管理方針どおり：既存データを消さない）。
 // 同じIDの比較は updatedAt（後のほうが新しい）。論理削除は updatedAt が更新されるので、
@@ -96,4 +96,11 @@ export function recordsToWrite(plan: ImportPlan, choice: ImportChoice): { [K in 
     out[name] = list;
   }
   return out as unknown as { [K in DataStoreName]: DataStoreRecords[K][] };
+}
+
+/** 取り込み元の説明（変換スクリプトで作ったファイルだけ）。例：「取り込み元：らくな家計簿（2024-01-01以降）・明細 120件」 */
+export function sourceNote(source: BackupSource | undefined, transactionCount: number): string | null {
+  if (!source) return null;
+  const from = source.importFrom ? `（${source.importFrom}以降）` : "";
+  return `取り込み元：${source.label}${from}・明細 ${transactionCount.toLocaleString("ja-JP")}件`;
 }

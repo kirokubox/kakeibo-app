@@ -80,7 +80,14 @@ import type { TransferDraft, TransferFocus, TransferMissing } from "./transferLo
 import type { Account, Category, Favorite, Id, Recurring, Reserve, ReserveMove, Transaction } from "./types";
 
 export type EntryMode =
-  | { kind: "new"; date: string; type?: EntryType; transfer?: { draft: TransferDraft; focus: TransferFocus } }
+  | {
+      kind: "new";
+      date: string;
+      type?: EntryType;
+      transfer?: { draft: TransferDraft; focus: TransferFocus };
+      /** 内容・金額・資産を入れた状態で開く（カードの明細CSVの「支出として入れる」） */
+      prefill?: { content?: string; amount?: number; accountId?: Id };
+    }
   | { kind: "edit"; tx: Transaction }
   | { kind: "copy"; tx: Transaction; today: string }
   /** 繰り返しの編集（設定の「繰り返し」から）。保存すると、これから作る分だけが変わる */
@@ -128,7 +135,12 @@ function initialState(mode: EntryMode): FormState {
   if (mode.kind === "new") {
     return {
       isTransfer: !!mode.transfer,
-      draft: emptyDraft(mode.type ?? "expense", mode.date),
+      draft: {
+        ...emptyDraft(mode.type ?? "expense", mode.date),
+        ...(mode.prefill?.content !== undefined ? { content: mode.prefill.content } : {}),
+        ...(mode.prefill?.amount !== undefined ? { amount: mode.prefill.amount } : {}),
+        ...(mode.prefill?.accountId !== undefined ? { accountId: mode.prefill.accountId } : {}),
+      },
       tdraft: mode.transfer ? mode.transfer.draft : emptyTransferDraft(mode.date),
       reimb: null,
       settlesTxId: null,
@@ -214,7 +226,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
             setPad(startPad(init.tdraft.amount));
             setPanel("amount");
           } else if (focus === "to") setPanel("to");
-          else setPanel("account");
+          else setPanel(mode.prefill?.accountId ? "category" : "account");
         }
       } catch (e) {
         if (!cancelled) setLoadError(e instanceof Error ? e.message : "データを開けませんでした");

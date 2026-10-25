@@ -1,5 +1,6 @@
 import { buildBackup } from "./backup.js";
 import { DB_NAME, DB_VERSION, SETTINGS_KEY, SETTINGS_STORE, TRANSACTION_INDEXES, defaultSettings } from "./constants.js";
+import { planUpgrade } from "./dbMigration.js";
 import { nowIso } from "./dateUtils.js";
 import { buildSeedCategories } from "./seedCategories.js";
 import { DATA_STORE_NAMES } from "./types.js";
@@ -13,15 +14,15 @@ function openDb(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      // 版1：全ストアを作る。以後の版では「無いものだけ足す」形で、既存のストアとデータには触れない
-      for (const name of DATA_STORE_NAMES) {
-        if (db.objectStoreNames.contains(name)) continue;
+      // 版1：全ストアを作る。以後の版では「無いものだけ足す」形で、既存のストアとデータには触れない（計画は dbMigration.ts）
+      const plan = planUpgrade(Array.from(db.objectStoreNames));
+      for (const name of plan.create) {
         const store = db.createObjectStore(name, { keyPath: "id" });
         if (name === "transactions") {
           for (const index of TRANSACTION_INDEXES) store.createIndex(index, index, { unique: false });
         }
       }
-      if (!db.objectStoreNames.contains(SETTINGS_STORE)) db.createObjectStore(SETTINGS_STORE);
+      if (plan.createSettings) db.createObjectStore(SETTINGS_STORE);
     };
     req.onsuccess = () => {
       // 新しい版が別タブで開かれたら、古い接続を閉じて更新を妨げない

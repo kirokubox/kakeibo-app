@@ -39,6 +39,13 @@
     "src/plannedLogic.ts",
     "src/budgetLogic.ts",
     "src/outlookLogic.ts",
+    "src/dbMigration.ts",
+    "src/searchLogic.ts",
+    "src/summaryLogic.ts",
+    "src/subscriptionLogic.ts",
+    "src/aiMarkdown.ts",
+    "src/reconcileLogic.ts",
+    "src/csvImport.ts",
     "tests/fixtures.ts",
     "tests/dateUtils.test.ts",
     "tests/money.test.ts",
@@ -62,6 +69,13 @@
     "tests/reserveLogic.test.ts",
     "tests/plannedLogic.test.ts",
     "tests/budgetLogic.test.ts",
-    "tests/outlookLogic.test.ts"
+    "tests/outlookLogic.test.ts",
+    "tests/dbMigration.test.ts",
+    "tests/searchLogic.test.ts",
+    "tests/summaryLogic.test.ts",
+    "tests/subscriptionLogic.test.ts",
+    "tests/aiMarkdown.test.ts",
+    "tests/reconcileLogic.test.ts",
+    "tests/csvImport.test.ts"
   ]
 }

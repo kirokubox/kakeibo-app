@@ -10,6 +10,7 @@ import { computeAllocation } from "./reimburseLogic";
 import { getReimburseSet } from "./reimburseStore";
 import { useToast } from "./Toast";
 import { Icon } from "./Icon";
+import { SearchView } from "./SearchView";
 import { PREF_ENTRIES_MODE, readPref, writePref } from "./localPrefs";
 import { formatYen } from "./money";
 import {
@@ -64,6 +65,7 @@ export function EntriesView({ tabBar, today, version, onOpenSettings, onAdd, onE
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [picker, setPicker] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [adjusting, setAdjusting] = useState<Transaction | null>(null);
   const [reimburse, setReimburse] = useState<Transaction[]>([]);
   const [toast, showToast] = useToast();
@@ -131,10 +133,15 @@ export function EntriesView({ tabBar, today, version, onOpenSettings, onAdd, onE
 
   const title = mode === "week" ? weekTitle(weekStart) : monthTitle(month);
 
+  if (searching) return <SearchView today={today} version={version} onBack={() => setSearching(false)} onEdit={onEdit} onChanged={onChanged} />;
+
   return (
     <>
       <header className="topbar">
         <h1 className="topbar-title">明細</h1>
+        <button type="button" className="icon-btn" aria-label="検索" onClick={() => setSearching(true)}>
+          <Icon name="search" size={22} />
+        </button>
         <button type="button" className="icon-btn" aria-label="設定" onClick={onOpenSettings}>
           <Icon name="settings" size={22} />
         </button>

@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildBackup, parseBackup } from "../src/backup.js";
 import { defaultSettings } from "../src/constants.js";
-import { indexExisting, planImport, recordsToWrite, totalsOf } from "../src/importPreview.js";
-import { T0, T1, T2, emptyData, manyTransactions, sampleData, tx, viaJson } from "./fixtures.js";
+import { indexExisting, planImport, recordsToWrite, sourceNote, totalsOf } from "../src/importPreview.js";
+import { T0, T1, T2, emptyData, manyTransactions, sampleBackup, sampleData, tx, viaJson } from "./fixtures.js";
 
 function backupOf(transactions: ReturnType<typeof tx>[]) {
   const d = emptyData();
@@ -117,4 +117,19 @@ test("2万件の差分計算が実用的な時間で終わる（検証→差分�
   assert.equal(plan.transactions.same, 10000);
   assert.equal(writes.transactions.length, 20000);
   assert.ok(elapsed < 5000, `処理に ${elapsed}ms かかった（5秒未満であること）`);
+});
+
+test("プレビューの取り込み元：ラベルと明細の件数。取り込み元が無いファイルには出さない", () => {
+  assert.equal(sourceNote(undefined, 10), null);
+  const note = sourceNote({ type: "rakuna-kakeibo-mmbak", label: "らくな家計簿", importFrom: "2024-01-01" }, 13054);
+  assert.equal(note, "取り込み元：らくな家計簿（2024-01-01以降）・明細 13,054件");
+  assert.equal(sourceNote({ type: "x", label: "別のアプリ" }, 3), "取り込み元：別のアプリ・明細 3件");
+});
+
+test("subscriptionReviews も追加インポートの差分に入る", () => {
+  const existing = emptyData();
+  const incoming = sampleBackup();
+  const plan = planImport(incoming, indexExisting(existing));
+  assert.equal(plan.subscriptionReviews.add.length, 1);
+  assert.equal(recordsToWrite(plan, { add: true, update: true }).subscriptionReviews.length, 1);
 });

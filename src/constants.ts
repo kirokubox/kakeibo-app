@@ -1,6 +1,6 @@
 import type { Settings } from "./types.js";
 
-export const APP_VERSION = "0.6.0";
+export const APP_VERSION = "0.8.0";
 /** 初期分類の作成・更新時刻（固定）。別の端末で初期分類を入れても同じ時刻になり、本人が変えたもの（これより後）が追加読み込みで「新しい方」になる */
 export const SEED_TIMESTAMP = "2026-10-25T00:00:00.000Z";
 export const APP_NAME = "家計簿";
@@ -8,8 +8,8 @@ export const BACKUP_APP_NAME = "kakeibo-app" as const;
 export const BACKUP_SCHEMA_VERSION = 1 as const;
 
 export const DB_NAME = "kakeibo-app";
-/** 1: 全ストアを作成（transactions には索引を付ける） */
-export const DB_VERSION = 1;
+/** 1: 全ストアを作成（transactions には索引を付ける）　2: subscriptionReviews（サブスクの見直し）を足す */
+export const DB_VERSION = 2;
 export const SETTINGS_STORE = "settings";
 export const SETTINGS_KEY = "app";
 
@@ -26,6 +26,7 @@ export const STORE_LABELS = {
   plannedExpenses: "予定出費",
   budgetSnapshots: "予算の記録",
   cardStatements: "カードの請求",
+  subscriptionReviews: "サブスクの見直し",
 } as const;
 
 /** transactions に付ける索引（約1万3千件を毎回全部読まないため） */
