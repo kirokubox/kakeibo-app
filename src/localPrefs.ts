@@ -2,6 +2,7 @@
 
 export const PREF_ENTRIES_MODE = "kakeibo-app:entriesMode";
 export const PREF_LAST_ACCOUNT = "kakeibo-app:lastAccountId";
+export const PREF_OUTLOOK_MONTHS = "kakeibo-app:outlookMonths";
 
 export function readPref(key: string): string | null {
   try {

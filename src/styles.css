@@ -569,3 +569,50 @@ ul.chips { margin: 0; padding: 0; list-style: none; }
 .payroll-body > .card, .payroll-body > .payroll-section { flex: none; }
 .line-check { flex: none; width: 22px; height: 22px; accent-color: var(--kb-accent); }
 .field-hint.repeat-summary { margin-top: var(--kb-space-3) !important; }
+
+/* ---- 段階6：ホーム・見通し・取り置き・予定出費 ---- */
+/* 注意の色：責める言い方・赤は使わない */
+.caution { color: var(--kb-warning); }
+.home-content > *, .outlook-content > * { flex: none; }
+.home-content, .outlook-content { gap: var(--kb-space-3); }
+.home-card { display: flex; flex-direction: column; gap: var(--kb-space-2); width: 100%; text-align: left; border: 0; color: var(--kb-text); }
+button.home-card:active { background: var(--kb-surface-2); }
+.home-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--kb-space-2); margin: calc(-1 * var(--kb-space-2)) calc(-1 * var(--kb-space-2)) 0 0; }
+.home-label { color: var(--kb-text-2); font-size: var(--kb-fs-s); font-weight: 600; }
+.home-big { font-size: 1.75rem; font-weight: 700; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.home-big.caution { font-size: var(--kb-fs-xl); }
+.home-sub { display: flex; flex-wrap: wrap; gap: var(--kb-space-1) var(--kb-space-4); color: var(--kb-text-2); font-size: var(--kb-fs-s); font-variant-numeric: tabular-nums; }
+.home-hint { color: var(--kb-text-2); font-size: var(--kb-fs-m); line-height: 1.6; }
+.home-more { color: var(--kb-accent-strong); font-size: var(--kb-fs-xs); font-weight: 600; }
+.home-actions { display: flex; flex-wrap: wrap; gap: var(--kb-space-2); }
+.main-card .home-bars { margin-top: var(--kb-space-2); }
+.link-row-value { display: inline-flex; align-items: center; gap: var(--kb-space-1); color: var(--kb-text); font-variant-numeric: tabular-nums; }
+.notice-list { display: flex; flex-direction: column; gap: var(--kb-space-2); }
+.recent-list .more-row { padding-bottom: var(--kb-space-1); }
+.breakdown .row.total { border-top: 1px solid var(--kb-line-strong); font-weight: 700; }
+.breakdown dd { font-variant-numeric: tabular-nums; }
+.breakdown-title { margin: var(--kb-space-4) 0 var(--kb-space-1); font-size: var(--kb-fs-m); }
+.breakdown-list { margin: 0 calc(-1 * var(--kb-space-4)); }
+.breakdown-note { margin: var(--kb-space-3) 0 0; line-height: 1.5; }
+.actions.center { justify-content: center; }
+.sheet-actions.stack { flex-direction: column; align-items: stretch; }
+.sheet-inline { margin-top: var(--kb-space-2); }
+.caution-note { color: var(--kb-warning); background: var(--kb-warning-soft); padding: var(--kb-space-2) var(--kb-space-3); border-radius: var(--kb-radius-s); margin-top: var(--kb-space-2) !important; }
+.choice.danger { color: var(--kb-danger); }
+.done-candidates { margin: 0 calc(-1 * var(--kb-space-4)); max-height: 40dvh; overflow-y: auto; }
+
+/* 見通しの表：表の部分だけ横にスクロール */
+.outlook-card { padding: var(--kb-space-3) 0 var(--kb-space-3) var(--kb-space-3); }
+.outlook-card .table-scroll { padding-right: var(--kb-space-3); }
+.outlook-table { border-collapse: collapse; font-size: var(--kb-fs-s); font-variant-numeric: tabular-nums; min-width: 100%; }
+.outlook-table th, .outlook-table td { padding: 8px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--kb-line); vertical-align: top; }
+.outlook-table thead th { color: var(--kb-text-2); font-size: var(--kb-fs-xs); font-weight: 600; }
+.outlook-table .row-head { position: sticky; left: 0; z-index: 1; background: var(--kb-surface); text-align: left; color: var(--kb-text-2); font-weight: 600; font-size: var(--kb-fs-xs); white-space: normal; min-width: 92px; box-shadow: 1px 0 0 var(--kb-line); }
+.outlook-table .col-sub, .outlook-table .cell-sub { display: block; margin-top: 2px; color: var(--kb-text-3); font-size: 0.6875rem; font-weight: 400; }
+.outlook-table .cell-sub.caution { color: var(--kb-warning); }
+.outlook-table .total-row td, .outlook-table .total-row th { font-weight: 700; border-top: 1px solid var(--kb-line-strong); }
+.outlook-table .net-row td { color: var(--kb-text-2); }
+.outlook-table td.caution { color: var(--kb-warning); }
+.outlook-note { padding-right: var(--kb-space-3); margin-top: var(--kb-space-3) !important; line-height: 1.6 !important; }
+.outlook-section .empty-note { margin: var(--kb-space-3) var(--kb-space-4); }
+.outlook-section .list-head .text-btn { min-height: 36px; padding: 0 var(--kb-space-2); }

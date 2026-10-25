@@ -300,6 +300,7 @@ const checkPlanned: Check = (v, at) =>
     reqYen(v, "amount", at),
     opt(v, "reserveId", at, isNonEmptyStr, "文字列"),
     opt(v, "doneTxId", at, isNonEmptyStr, "文字列"),
+    opt(v, "doneAt", at, isIsoDateTime, "時刻つきの日時"),
   );
 
 const checkBudget: Check = (v, at) => {

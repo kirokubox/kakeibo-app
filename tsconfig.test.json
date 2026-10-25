@@ -35,6 +35,10 @@
     "src/recurrence.ts",
     "src/payrollLogic.ts",
     "src/scheduleLogic.ts",
+    "src/reserveLogic.ts",
+    "src/plannedLogic.ts",
+    "src/budgetLogic.ts",
+    "src/outlookLogic.ts",
     "tests/fixtures.ts",
     "tests/dateUtils.test.ts",
     "tests/money.test.ts",
@@ -54,6 +58,10 @@
     "tests/businessDay.test.ts",
     "tests/recurrence.test.ts",
     "tests/scheduleLogic.test.ts",
-    "tests/payrollLogic.test.ts"
+    "tests/payrollLogic.test.ts",
+    "tests/reserveLogic.test.ts",
+    "tests/plannedLogic.test.ts",
+    "tests/budgetLogic.test.ts",
+    "tests/outlookLogic.test.ts"
   ]
 }

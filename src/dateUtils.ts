@@ -98,3 +98,10 @@ export function addMonths(ym: string, months: number): string {
   const idx = y * 12 + (m - 1) + months;
   return `${Math.floor(idx / 12)}-${pad((idx % 12) + 1)}`;
 }
+
+/** 画面表示用：2027年3月（年月 YYYY-MM から） */
+export function formatMonthJa(ym: string): string {
+  if (!isMonthKey(ym)) return ym;
+  const [y, m] = ym.split("-").map(Number);
+  return `${y}年${m}月`;
+}

@@ -196,3 +196,26 @@ test("段階5で足した項目：正しい値は通り、不正な値は拒否"
     assert.match(reason(b), re, label);
   }
 });
+
+test("段階6で足した項目：予定出費の済み(doneAt)と、予算の決め直し(basis.recalculatedAt)", () => {
+  const ok: Any = viaJson(sampleBackup());
+  ok.plannedExpenses[0].doneAt = "2026-10-26T09:00:00.000Z";
+  ok.plannedExpenses[0].doneTxId = "t1";
+  ok.budgetSnapshots[0].basis.recalculatedAt = 1788000000000;
+  assert.equal(reason(ok), "");
+  // 項目が無くても通る(段階5までのバックアップ)
+  const old: Any = viaJson(sampleBackup());
+  assert.equal("doneAt" in old.plannedExpenses[0], false);
+  assert.equal(reason(old), "");
+
+  const checks: Array<[string, (b: Any) => void, RegExp]> = [
+    ["doneAt の型", (b) => { b.plannedExpenses[0].doneAt = 5; }, /plannedExpenses\[0\]\.doneAt/],
+    ["doneAt の形式", (b) => { b.plannedExpenses[0].doneAt = "2026-10-26"; }, /plannedExpenses\[0\]\.doneAt/],
+    ["recalculatedAt が小数", (b) => { b.budgetSnapshots[0].basis.recalculatedAt = 1.5; }, /basis\.recalculatedAt/],
+  ];
+  for (const [label, mutate, re] of checks) {
+    const b: Any = viaJson(sampleBackup());
+    mutate(b);
+    assert.match(reason(b), re, label);
+  }
+});

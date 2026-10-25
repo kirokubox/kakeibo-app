@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { defaultSettings } from "./constants";
 import { AssetsView } from "./AssetsView";
+import { ensureBudgets } from "./budgetStore";
 import { EntriesView } from "./EntriesView";
 import { EntryView } from "./EntryView";
 import type { EntryMode } from "./EntryView";
 import { Fab } from "./Fab";
+import { HomeView } from "./HomeView";
+import { OutlookView } from "./OutlookView";
 import { todayKey } from "./dateUtils";
 import { PayrollEntryView } from "./PayrollEntryView";
 import { RecurringLabelsContext, generateDueRecurrings, loadRecurringLabels } from "./recurringStore";
@@ -20,10 +23,10 @@ import type { Id, Settings, Transaction } from "./types";
 
 /** 未実装のタブに出す案内（どの段階で作るか） */
 const PLACEHOLDERS: Record<TabId, { title: string; stage: string; body: string }> = {
-  home: { title: "ホーム", stage: "段階6", body: "使える額・今週あと◯円・今月の予算をここに出します（段階6）。入力は右下の＋から。" },
+  home: { title: "ホーム", stage: "", body: "" },
   entries: { title: "明細", stage: "段階3", body: "" },
   summary: { title: "集計", stage: "段階8", body: "分類別の比較や月ごとの推移を見られるようにします。" },
-  outlook: { title: "見通し", stage: "段階6", body: "給料日ごとに、3〜6か月先のお金の見通しを出します。" },
+  outlook: { title: "見通し", stage: "", body: "" },
   assets: { title: "資産", stage: "", body: "" },
 };
 
@@ -45,6 +48,8 @@ export default function App() {
   const [dataVersion, setDataVersion] = useState(0);
   const [recurringLabels, setRecurringLabels] = useState<ReadonlyMap<string, string>>(() => new Map());
   const [toast, showToast] = useToast();
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   // 日付が変わったら（0時をまたいだ・長く開いたまま・戻ってきた）今日を更新する
   const [today, setToday] = useState(todayKey);
   const bump = useCallback(() => setDataVersion((v) => v + 1), []);
@@ -96,17 +101,30 @@ export default function App() {
     [bump, showToast],
   );
 
+  /** まだ決まっていない今週・今月の予算を決める(二重には作らない)。繰り返しの明細を作ったあとに呼ぶ */
+  const runBudgets = useCallback(
+    async (day: string, current: Settings) => {
+      try {
+        if ((await ensureBudgets(current, day)) > 0) bump();
+      } catch {
+        // 決められなかったときは何も書かれていない。次に開いたときにもう一度試す
+      }
+    },
+    [bump],
+  );
+
   // アプリを開いたとき・日付が変わったとき
   useEffect(() => {
-    if (ready) void runRecurring(today);
-  }, [ready, today, runRecurring]);
+    if (!ready) return;
+    void runRecurring(today).then(() => runBudgets(today, settings));
+  }, [ready, today, settings, runRecurring, runBudgets]);
 
   // 画面に戻ったとき・開いたまま日付が変わったとき
   useEffect(() => {
     const refresh = () => {
       const day = todayKey();
       setToday(day);
-      if (document.visibilityState === "visible") void runRecurring(day);
+      if (document.visibilityState === "visible") void runRecurring(day).then(() => runBudgets(day, settingsRef.current));
     };
     document.addEventListener("visibilitychange", refresh);
     const timer = window.setInterval(() => setToday(todayKey()), 60_000);
@@ -114,7 +132,7 @@ export default function App() {
       document.removeEventListener("visibilitychange", refresh);
       window.clearInterval(timer);
     };
-  }, [runRecurring]);
+  }, [runRecurring, runBudgets]);
 
   // 明細の行の「(毎月)」の材料
   useEffect(() => {
@@ -210,6 +228,35 @@ export default function App() {
       return (
         <div className="app">
           <EntriesView tabBar={tabBar} today={today} version={dataVersion} onOpenSettings={() => setShowSettings(true)} onAdd={openNew} onEdit={openEdit} onChanged={bump} />
+          {overlays}
+        </div>
+      );
+    }
+
+    if (tab === "home") {
+      return (
+        <div className="app">
+          <HomeView
+            tabBar={tabBar}
+            today={today}
+            version={dataVersion}
+            settings={settings}
+            onOpenSettings={() => setShowSettings(true)}
+            onAdd={openNew}
+            onEdit={openEdit}
+            onOpenPayroll={() => openPayroll({})}
+            onGoEntries={() => setTab("entries")}
+            onChanged={bump}
+          />
+          {overlays}
+        </div>
+      );
+    }
+
+    if (tab === "outlook") {
+      return (
+        <div className="app">
+          <OutlookView tabBar={tabBar} today={today} version={dataVersion} settings={settings} onOpenSettings={() => setShowSettings(true)} onAdd={openNew} onChanged={bump} />
           {overlays}
         </div>
       );

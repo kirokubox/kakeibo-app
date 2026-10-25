@@ -39,6 +39,8 @@ import { ReimburseSheet } from "./ReimburseSheet";
 import { applyReimbFields, checkReimbWithin, isSettleCategory, outstandingGroups, overReturn, remainingFor } from "./reimburseLogic";
 import type { OutstandingItem, Reimb } from "./reimburseLogic";
 import { getReimburseSet } from "./reimburseStore";
+import { ReservePicker } from "./ReservePicker";
+import { balanceOf, netPayAmount, overflowOf, planSpendSync } from "./reserveLogic";
 import {
   applyRepeatEdit,
   buildRecurring,
@@ -51,7 +53,7 @@ import {
   validateRepeat,
 } from "./recurrence";
 import type { RepeatDraft } from "./recurrence";
-import { getAll, newBase, saveRecord, saveStores, softDelete } from "./storage";
+import { getAll, newBase, saveRecord, saveRecords, saveStores, softDelete } from "./storage";
 import { getSuggestIndex, noteTransactionChanged } from "./suggestStore";
 import { currentWord, lastUsageOf, replaceCurrentWord, suggestContents, suggestMemoWords } from "./suggestLogic";
 import type { SuggestIndex } from "./suggestLogic";
@@ -75,7 +77,7 @@ import {
   transferUsageHint,
 } from "./transferLogic";
 import type { TransferDraft, TransferFocus, TransferMissing } from "./transferLogic";
-import type { Account, Category, Favorite, Id, Recurring, Transaction } from "./types";
+import type { Account, Category, Favorite, Id, Recurring, Reserve, ReserveMove, Transaction } from "./types";
 
 export type EntryMode =
   | { kind: "new"; date: string; type?: EntryType; transfer?: { draft: TransferDraft; focus: TransferFocus } }
@@ -97,8 +99,9 @@ interface Props {
 
 /** account = 資産（振替では出金）、to = 振替の入金、fee = 振替の手数料 */
 type Panel = "account" | "to" | "category" | "amount" | "fee" | null;
-type Sheet = null | "discard" | "delete" | "favorites" | "reimb" | "settle" | "repeat" | "deleteRec";
+type Sheet = null | "discard" | "delete" | "favorites" | "reimb" | "settle" | "repeat" | "deleteRec" | "reserve";
 type ErrorKey = MissingField | "to" | "reimb";
+
 
 const TYPE_LABELS: Record<EntryType, string> = { income: "収入", expense: "支出" };
 
@@ -161,6 +164,11 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
   const [reimb, setReimb] = useState<Reimb | null>(init.reimb);
   const [settlesTxId, setSettlesTxId] = useState<Id | null>(init.settlesTxId);
   const [reimburseSet, setReimburseSet] = useState<Transaction[]>([]);
+  // 取り置きから払う
+  const [reserveId, setReserveId] = useState<Id | null>(() => (mode.kind === "edit" && mode.tx.type === "expense" ? (mode.tx.reserveId ?? null) : null));
+  const [initialReserveId, setInitialReserveId] = useState<Id | null>(() => (mode.kind === "edit" && mode.tx.type === "expense" ? (mode.tx.reserveId ?? null) : null));
+  const [reserves, setReserves] = useState<Reserve[]>([]);
+  const [reserveMoves, setReserveMoves] = useState<ReserveMove[]>([]);
   const [initialJson, setInitialJson] = useState(() => JSON.stringify(init));
   const isRecMode = mode.kind === "recurring";
   const [repeat, setRepeat] = useState<RepeatDraft | null>(() => (mode.kind === "recurring" ? recurringToRepeat(mode.rec) : null));
@@ -193,10 +201,12 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
     let cancelled = false;
     (async () => {
       try {
-        const [a, c] = await Promise.all([getAll("accounts"), getAll("categories")]);
+        const [a, c, rs, rm] = await Promise.all([getAll("accounts"), getAll("categories"), getAll("reserves"), getAll("reserveMoves")]);
         if (cancelled) return;
         setAccounts(a);
         setCategories(c);
+        setReserves(rs);
+        setReserveMoves(rm);
         if (mode.kind === "new") {
           // 新規で開いたら、すぐ資産のパネル。カードの引き落としなどで用意された振替は、そのフォーカスへ
           const focus = mode.transfer?.focus;
@@ -245,7 +255,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
   const fromAccount = accountList.find((a) => a.id === tdraft.fromId);
   const toAccount = accountList.find((a) => a.id === tdraft.toId);
   const tags = isTransfer ? [] : tagOptions(draft.type, category);
-  const dirty = JSON.stringify({ isTransfer, draft, tdraft, reimb, settlesTxId }) !== initialJson || JSON.stringify(repeat) !== initialRepeatJson || actual;
+  const dirty = JSON.stringify({ isTransfer, draft, tdraft, reimb, settlesTxId }) !== initialJson || JSON.stringify(repeat) !== initialRepeatJson || actual || reserveId !== initialReserveId;
 
   const curDate = isTransfer ? tdraft.date : draft.date;
   const curAmount = isTransfer ? tdraft.amount : draft.amount;
@@ -298,6 +308,17 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
   const settleTarget = settlesTxId ? reimburseSet.find((t) => t.id === settlesTxId) : undefined;
   const settleRemaining = settlesTxId ? remainingFor(settlesTxId, reimburseSet, existing?.id) : null;
   const settleOver = settleRow ? overReturn(draft.amount, settleRemaining) : 0;
+
+  // 取り置きから払う：取り置きが1つ以上あるとき、支出の入力に出す。残高をこえる分の案内
+  const openReserves = useMemo(() => reserves.filter((r) => r.deletedAt === null && !r.closedAt), [reserves]);
+  const reserveChoices = useMemo(
+    () => openReserves.concat(reserves.filter((r) => r.deletedAt === null && !!r.closedAt && r.id === reserveId)),
+    [openReserves, reserves, reserveId],
+  );
+  const reserveRow = !isTransfer && !isRecMode && draft.type === "expense" && (openReserves.length > 0 || reserveId !== null);
+  const selectedReserve = reserveId ? reserves.find((r) => r.id === reserveId) : undefined;
+  const reserveAvailable = reserveId ? balanceOf(reserveId, reserveMoves, existing?.id) : 0;
+  const reserveOver = reserveRow && reserveId && draft.amount !== null ? overflowOf(netPayAmount(draft.amount, reimb), reserveAvailable) : 0;
 
   // ---- パネルの出し入れと自動で次へ ----
 
@@ -513,6 +534,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
         return;
       }
       record = transferToTransaction(t, newBase(), existing);
+      delete record.reserveId;
     } else {
       const check = checkDraft(d, categories, source);
       if (!check.ok) {
@@ -527,6 +549,8 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
         return;
       }
       record = applyReimbFields(draftToTransaction(d, categories, newBase(), existing), reimb, settlesTxId);
+      if (reserveId && d.type === "expense") record.reserveId = reserveId;
+      else delete record.reserveId;
     }
     if (repeat) {
       const problem = validateRepeat(repeat, mode.kind === "recurring" ? mode.rec.startDate : record.date);
@@ -550,13 +574,15 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
       }
       let saved: Transaction | null = null;
       let repeatToast = "";
+      // 取り置きから払うなら、その支出に合わせて取り置きの「使った」を作り直す(外した・種類を変えたときは消す)
+      const spendMoves = planSpendSync(record, await getAll("reserveMoves"), nowIso(), () => newBase());
       if (repeat) {
         // 繰り返しを作る：入力中の明細を1回目として保存する（日付が未来なら保存せず、その日が来たら自動で入る）
         const firstSaved = record.date <= today;
         const rec = buildRecurring(repeat, template, record.date, newBase(), firstSaved);
         if (firstSaved) {
           record = { ...record, recurringId: rec.id };
-          await saveStores({ transactions: [record], recurrings: [rec] });
+          await saveStores({ transactions: [record], recurrings: [rec], reserveMoves: spendMoves });
           saved = record;
           repeatToast = `（${repeatLabel(repeat)}の繰り返しを作りました）`;
         } else {
@@ -564,7 +590,8 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
           repeatToast = `繰り返しを作りました。${formatDateJa(record.date)}に最初の明細が入ります`;
         }
       } else {
-        saved = await saveRecord("transactions", record);
+        await saveStores({ transactions: [record], reserveMoves: spendMoves });
+        saved = record;
       }
       if (saved) noteTransactionChanged(saved);
       const fromId = isTransfer ? t.fromId : d.accountId;
@@ -584,12 +611,16 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
         const next = continueTransferDraft(t);
         setTdraft(next);
         setInitialJson(JSON.stringify({ isTransfer, draft, tdraft: next, reimb: null, settlesTxId: null }));
+        setReserveId(null);
+        setInitialReserveId(null);
         setPanel("to");
       } else {
         const next = continueDraft(d);
         setDraft(next);
         setReimb(null);
         setSettlesTxId(null);
+        setReserveId(null);
+        setInitialReserveId(null);
         setInitialJson(JSON.stringify({ isTransfer, draft: next, tdraft, reimb: null, settlesTxId: null }));
         setPanel("category");
       }
@@ -597,6 +628,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
       setError(null);
       showToast("保存しました（続けて入力）");
       void getReimburseSet().then(setReimburseSet);
+      void getAll("reserveMoves").then(setReserveMoves);
     } catch (e) {
       showToast(e instanceof Error ? e.message : "保存できませんでした");
     } finally {
@@ -616,14 +648,17 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
       await softDelete("transactions", existing.id);
       const now = nowIso();
       noteTransactionChanged({ ...existing, deletedAt: now, updatedAt: now });
+      // 取り置きから払っていた支出なら、取り置きの「使った」も消す
+      await saveRecords("reserveMoves", planSpendSync({ ...existing, deletedAt: now }, await getAll("reserveMoves"), now, () => newBase()));
       onChanged();
       const original = existing;
       showToast("削除しました", 5000, {
         label: "元に戻す",
         onClick: () => {
           saveRecord("transactions", { ...original, deletedAt: null })
-            .then((restored) => {
+            .then(async (restored) => {
               noteTransactionChanged(restored);
+              await saveRecords("reserveMoves", planSpendSync(restored, await getAll("reserveMoves"), nowIso(), () => newBase()));
               onChanged();
               showToast("元に戻しました");
             })
@@ -1085,6 +1120,29 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
                 </button>
               )}
 
+              {reserveRow && (
+                <>
+                  <button type="button" ref={setRowRef("reserve")} className="entry-row tap" onClick={() => setSheet("reserve")}>
+                    <span className="entry-label settle-label">取り置きから払う</span>
+                    <span className="entry-value">
+                      {selectedReserve ? (
+                        <>
+                          {selectedReserve.name}
+                          <span className="settle-rest">（残高 {formatYen(reserveAvailable)}）</span>
+                        </>
+                      ) : (
+                        <span className="entry-ph">使わない</span>
+                      )}
+                    </span>
+                  </button>
+                  {reserveOver > 0 && (
+                    <p className="field-hint pad-hint settle-over" role="status">
+                      残高を{formatYen(reserveOver)}こえます。こえた分は使える額から出ます。
+                    </p>
+                  )}
+                </>
+              )}
+
               {settleRow && (
                 <>
                   <button type="button" ref={setRowRef("settle")} className="entry-row tap settle-row" onClick={() => setSheet("settle")}>
@@ -1166,6 +1224,9 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
           }}
           onClose={() => setSheet(null)}
         />
+      )}
+      {sheet === "reserve" && (
+        <ReservePicker reserves={reserveChoices} moves={reserveMoves} selected={reserveId} excludeTxId={existing?.id} onPick={setReserveId} onClose={() => setSheet(null)} />
       )}
       {sheet === "settle" && <OutstandingPicker groups={outstandingGroups(reimburseSet, existing?.id)} onPick={pickSettle} onClose={() => setSheet(null)} />}
       {sheet === "repeat" && (

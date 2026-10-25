@@ -141,7 +141,10 @@ export interface PlannedExpense extends Base {
   month: string; // YYYY-MM
   amount: number;
   reserveId?: Id;
+  /** 済みにしたときの支出（明細なしで済みにしたときは無い） */
   doneTxId?: Id;
+  /** 済みにした時刻。済みの判定はこれで行う（明細なしでも済みにできるため） */
+  doneAt?: string;
 }
 
 export type BudgetPeriod = "week" | "month";
@@ -150,6 +153,7 @@ export interface BudgetSnapshot extends Base {
   start: string;
   end: string;
   amount: number;
+  /** 決めたときに使った数字（使える資産・生活防衛資金・取り置き残高・決まった出費・残り日数・1日あたり など）。決め直したときは recalculatedAt（時刻のミリ秒）を足す */
   basis: Record<string, number>;
 }
 
