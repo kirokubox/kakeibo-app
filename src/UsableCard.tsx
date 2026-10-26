@@ -93,7 +93,7 @@ function UsableBreakdown({ summary, onClose }: { summary: HomeSummary; onClose: 
             <li key={`${i.date}-${i.label}-${idx}`} className="list-row static">
               <span className="list-main">
                 <span className="list-name">{i.label}</span>
-                <span className="list-sub">{i.kind === "planned" ? `予定出費（${i.date.slice(0, 7)}）` : formatMonthDayWeekday(i.date)}</span>
+                <span className="list-sub">{i.kind === "planned" ? `予定出費（${i.date.slice(0, 7)}）` : i.kind === "future" ? `先の日付の明細・${formatMonthDayWeekday(i.date)}` : formatMonthDayWeekday(i.date)}</span>
               </span>
               <span className="list-amount">{formatYen(i.amount)}</span>
             </li>

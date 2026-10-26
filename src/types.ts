@@ -11,6 +11,7 @@ export const DATA_STORE_NAMES = [
   "reserves",
   "reserveMoves",
   "plannedExpenses",
+  "plannedIncomes",
   "budgetSnapshots",
   "cardStatements",
   "subscriptionReviews",
@@ -109,8 +110,8 @@ export interface Favorite extends Base {
 
 /** lineId は行ごとの固定のid（前回の金額を行の順番ではなく行に結びつけるため） */
 export type PayrollLine =
-  | { lineId: Id; kind: "pay" | "deduction"; categoryId: Id; label: string; amount: number }
-  | { lineId: Id; kind: "settlement"; accountId: Id; label: string; amount: number }; // 社員証などの精算（支出にしない）
+  | { lineId: Id; kind: "pay" | "deduction"; categoryId: Id; label: string; amount: number; variable?: boolean }
+  | { lineId: Id; kind: "settlement"; accountId: Id; label: string; amount: number; variable?: boolean }; // 社員証などの精算（支出にしない）。variable＝毎月変わる行（残業代など。見通しの手取りから除く）
 export interface Payroll extends Base {
   name: string;
   accountId: Id;
@@ -148,6 +149,19 @@ export interface PlannedExpense extends Base {
   doneAt?: string;
 }
 
+/** 予定収入（予定出費の逆）。賞与など、入る月は分かるが額が決まっていない収入。見通しにだけ入り、使える額・予算には入れない */
+export interface PlannedIncome extends Base {
+  name: string;
+  month: string; // YYYY-MM
+  amount: number;
+  /** 入る資産（任意） */
+  accountId?: Id;
+  /** 「入った」にしたときの収入（明細なしで済みにしたときは無い） */
+  doneTxId?: Id;
+  /** 「入った」にした時刻。済みの判定はこれで行う */
+  doneAt?: string;
+}
+
 export type BudgetPeriod = "week" | "month";
 export interface BudgetSnapshot extends Base {
   period: BudgetPeriod;
@@ -155,8 +169,11 @@ export interface BudgetSnapshot extends Base {
   end: string;
   amount: number;
   /** 決めたときに使った数字（使える資産・生活防衛資金・取り置き残高・決まった出費・残り日数・1日あたり など）。決め直したときは recalculatedAt（時刻のミリ秒）を足す */
-  basis: Record<string, number>;
+  basis: BudgetBasis;
 }
+
+/** 予算を決めたときの数字。mode は予算の決め方（'manual'＝自分で決めた月の予算。無ければ自動） */
+export type BudgetBasis = { mode?: "manual" | "auto" } & { [key: string]: number | string | undefined };
 
 export interface CardStatement extends Base {
   cardAccountId: Id;
@@ -179,6 +196,7 @@ export interface SubscriptionReview extends Base {
 }
 
 export type BudgetMonthBoundary = "payday" | "calendar";
+export type BudgetMode = "auto" | "manual";
 export type WeekStart = "monday" | "sunday";
 export type HomeMainFigure = "remaining" | "spent";
 /** 設定。1端末に1つだけ持つ（IndexedDB の settings ストア、キー "app"）。バックアップには入るが、追加インポートでは上書きしない */
@@ -187,6 +205,10 @@ export interface Settings {
   paydayHolidayShift: HolidayShift; // 初期値 'before'
   defenseFund: number; // 初期値 0（一般向け。本人用の値は本人用の初期データで入れる）
   budgetMonthBoundary: BudgetMonthBoundary; // 初期値 'payday'
+  /** 予算の決め方。auto＝使える額から自動／manual＝月の予算を自分で決める（週はそこから自動で割る）。初期値 'auto' */
+  budgetMode: BudgetMode;
+  /** 自分で決める月の予算（manual のとき。1円以上）。初期値 null */
+  monthlyBudget: number | null;
   homeMainFigure: HomeMainFigure; // 初期値 'remaining'
   weekStart: WeekStart; // 初期値 'monday'。週の予算・ホームの週・明細の週別・カレンダー・集計の週に効く
   backupReminderDays: number; // 最後のバックアップから何日で知らせるか
@@ -204,6 +226,7 @@ export interface DataStoreRecords {
   reserves: Reserve;
   reserveMoves: ReserveMove;
   plannedExpenses: PlannedExpense;
+  plannedIncomes: PlannedIncome;
   budgetSnapshots: BudgetSnapshot;
   cardStatements: CardStatement;
   subscriptionReviews: SubscriptionReview;

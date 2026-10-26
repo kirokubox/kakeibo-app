@@ -27,3 +27,10 @@ export function validateReminderDays(value: unknown): string | null {
   }
   return null;
 }
+
+/** 月の予算（自分で決める）：1円以上の整数 */
+export function validateMonthlyBudget(value: unknown): string | null {
+  if (!isYen(value)) return "月の予算は1円単位の整数で入力してください";
+  if (value < 1) return "月の予算は1円以上で入力してください";
+  return null;
+}

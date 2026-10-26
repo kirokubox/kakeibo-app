@@ -1,7 +1,7 @@
 // 資産の計算と入力チェック（画面から切り離した純粋なロジック）
 import { nextCardPayment } from "./businessDay.js";
 import { formatMonthDayWeekday } from "./dateUtils.js";
-import { isYen } from "./money.js";
+import { formatYen, isYen } from "./money.js";
 import { byOrder } from "./orderUtils.js";
 import { isDayOfMonth } from "./settingsLogic.js";
 import type { Account, AccountGroup, DataSet, HolidayShift, Id, Transaction } from "./types.js";
@@ -208,4 +208,46 @@ export function cardNextNote(account: Account, accounts: readonly Account[], tod
 export function nextDebitText(account: Account, today: string): string | null {
   if (!account.card) return null;
   return `次の引き落とし ${formatMonthDayWeekday(nextCardPayment(account.card, today))}`;
+}
+
+// ---- 今日までの残高と、先の日付の明細（改善2） ----
+
+/** 今日までの明細（date が today 以前）だけで残高を計算する。先の日付の明細は含めない */
+export function computeBalancesUntil(accounts: readonly Account[], transactions: readonly Transaction[], today: string): Map<Id, number> {
+  return computeBalances(
+    accounts,
+    transactions.filter((t) => t.date <= today),
+  );
+}
+
+export interface PlannedEffect {
+  /** 先の日付の明細が残高を動かす額の合計 */
+  delta: number;
+  /** その資産に関わる先の日付の明細の件数 */
+  count: number;
+}
+
+/** 資産ごとの、先の日付（today より後）の明細の影響。論理削除済みは除く。影響のない資産は入らない */
+export function plannedEffects(accounts: readonly Account[], transactions: readonly Transaction[], today: string): Map<Id, PlannedEffect> {
+  const out = new Map<Id, PlannedEffect>();
+  const future = transactions.filter((t) => t.deletedAt === null && t.date > today);
+  for (const a of accounts) {
+    if (a.deletedAt !== null) continue;
+    let delta = 0;
+    let count = 0;
+    for (const t of future) {
+      if (t.accountId !== a.id && t.toAccountId !== a.id) continue;
+      count++;
+      delta += txEffect(a.id, t);
+    }
+    if (count > 0) out.set(a.id, { delta, count });
+  }
+  return out;
+}
+
+/** 「予定を含めると 124,000円（2件）」の文章（先の日付の明細がなければ null） */
+export function plannedBalanceNote(balance: number, effect: PlannedEffect | undefined): string | null {
+  if (!effect || effect.count === 0) return null;
+  const total = balance + effect.delta;
+  return `予定を含めると ${formatYen(total)}（${effect.count}件）`;
 }

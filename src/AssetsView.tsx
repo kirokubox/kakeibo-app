@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { AccountDetailView } from "./AccountDetailView";
 import { AccountEditor } from "./AccountEditor";
-import { GROUP_ORDER, cardNextNote, computeBalances, groupSections, summarizeAccounts } from "./accountLogic";
+import { GROUP_ORDER, cardNextNote, computeBalancesUntil, groupSections, plannedBalanceNote, plannedEffects, summarizeAccounts } from "./accountLogic";
 import type { EntryMode } from "./EntryView";
 import { Icon } from "./Icon";
 import { KebabMenu } from "./KebabMenu";
@@ -66,7 +66,9 @@ export function AssetsView({ tabBar, today, version, onOpenSettings, onEdit, onO
   }, [load, version]);
 
   const active = useMemo(() => (accounts ?? []).filter((a) => a.deletedAt === null), [accounts]);
-  const balances = useMemo(() => computeBalances(active, transactions), [active, transactions]);
+  // 残高は今日までの明細で計算する。先の日付の明細は含めず、「予定を含めると」で別に見せる
+  const balances = useMemo(() => computeBalancesUntil(active, transactions, today), [active, transactions, today]);
+  const effects = useMemo(() => plannedEffects(active, transactions, today), [active, transactions, today]);
   const totals = useMemo(() => summarizeAccounts(active, balances), [active, balances]);
   const sections = useMemo(() => groupSections(active, balances), [active, balances]);
   const hiddenAccounts = useMemo(() => active.filter((a) => a.hidden).sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group) || byOrder(a, b)), [active]);
@@ -116,12 +118,14 @@ export function AssetsView({ tabBar, today, version, onOpenSettings, onEdit, onO
 
   const row = (a: Account) => {
     const note = cardNextNote(a, active, today);
+    const plannedNote = plannedBalanceNote(balances.get(a.id) ?? 0, effects.get(a.id));
     const body = (
       <>
         <span className="list-main">
           <span className="list-name">{a.name}</span>
           {note && <span className="list-sub">{note}</span>}
           {!a.includeInUsable && <span className="list-sub">使える資産に含めない</span>}
+          {plannedNote && <span className="list-sub">{plannedNote}</span>}
         </span>
         <span className="list-amount">
           <Amount value={balances.get(a.id) ?? 0} />

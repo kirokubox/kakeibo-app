@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AdjustSheet } from "./AdjustSheet";
 import type { AdjustMode } from "./AdjustSheet";
-import { cardNote, nextDebitText } from "./accountLogic";
+import { cardNote, nextDebitText, plannedBalanceNote, plannedEffects } from "./accountLogic";
 import { initialMonthCount, monthBlocks, runningBalances } from "./adjustLogic";
 import { DayGroup } from "./DayGroup";
 import { Icon } from "./Icon";
@@ -128,6 +128,8 @@ export function AccountDetailView({ account, accounts, balance, today, version, 
 
   const note = cardNote(account, accounts);
   const unpaid = unpaidAmount(balance);
+  // 先の日付の明細（予定）を含めた残高。残高は今日までの明細で計算している
+  const plannedNote = plannedBalanceNote(balance, txs ? plannedEffects([account], txs, today).get(account.id) : undefined);
 
   return (
     <>
@@ -143,6 +145,7 @@ export function AccountDetailView({ account, accounts, balance, today, version, 
           <p className="summary-label">{isCard ? "残高" : "今の残高"}</p>
           <p className={`summary-main${balance < 0 ? " neg" : ""}`}>{formatYen(balance)}</p>
           {isCard && <p className="account-unpaid">未払い {formatYen(unpaid)}</p>}
+          {plannedNote && <p className="list-sub">{plannedNote}</p>}
           {note && <p className="list-sub">{note}</p>}
           {isCard && nextDebitText(account, today) && <p className="list-sub">{nextDebitText(account, today)}</p>}
           {isCard && <p className="field-hint">請求額は、利用日から2〜3か月遅れて載るものがあります。「照合」で、請求額と明細を合わせられます。</p>}
@@ -176,7 +179,7 @@ export function AccountDetailView({ account, accounts, balance, today, version, 
           <section key={b.month} className="account-month" aria-label={monthTitle(b.month)}>
             <h2 className="month-head">{monthTitle(b.month)}</h2>
             {groupByDay(b.items).map((g) => (
-              <DayGroup key={g.date} group={g} accountNames={accountNames} categories={categories} onSelect={select} balances={balances} hideSums />
+              <DayGroup key={g.date} group={g} accountNames={accountNames} categories={categories} onSelect={select} balances={balances} hideSums plannedAfter={today} />
             ))}
           </section>
         ))}

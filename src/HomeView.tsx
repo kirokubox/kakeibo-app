@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { AdjustSheet } from "./AdjustSheet";
+import type { EntryMode } from "./EntryView";
+import { debitDueNotices, upcomingCardDebits } from "./cardDebitLogic";
 import { MonthCard, WeekCard } from "./BudgetCard";
 import { backupNotice, summarizeHome } from "./budgetLogic";
 import { recalcBudget, useBudgetBundle } from "./budgetStore";
@@ -13,6 +15,7 @@ import { ReservesView } from "./ReservesView";
 import { estimatedTransactions } from "./recurrence";
 import { outstandingGroups, outstandingSummary } from "./reimburseLogic";
 import { isReviewDue } from "./subscriptionLogic";
+import { prepareCardDebitOn } from "./transferLogic";
 import { useToast } from "./Toast";
 import { TxRow } from "./TxRow";
 import { UsableCard } from "./UsableCard";
@@ -28,6 +31,8 @@ interface Props {
   onOpenSettings: () => void;
   onAdd: (date: string) => void;
   onEdit: (tx: Transaction) => void;
+  /** 入力画面を開く（カードの引き落としの記録） */
+  onOpenEntry: (mode: EntryMode) => void;
   /** 給料明細の入力を開く */
   onOpenPayroll: () => void;
   /** 明細タブへ */
@@ -44,7 +49,7 @@ interface Props {
 type Page = "home" | "reserves" | "outstanding";
 
 /** ホーム：今週あと◯円、給料日までに使える額、今月の予算、取り置き、お知らせ、最近の明細 */
-export function HomeView({ tabBar, today, version, settings, onOpenSettings, onAdd, onEdit, onOpenPayroll, onGoEntries, onGoAssets, onGoCategories, onGoSummary, onChanged }: Props) {
+export function HomeView({ tabBar, today, version, settings, onOpenSettings, onAdd, onEdit, onOpenEntry, onOpenPayroll, onGoEntries, onGoAssets, onGoCategories, onGoSummary, onChanged }: Props) {
   const [page, setPage] = useState<Page>("home");
   const [adjusting, setAdjusting] = useState<Transaction | null>(null);
   const [toast, showToast] = useToast();
@@ -61,6 +66,8 @@ export function HomeView({ tabBar, today, version, settings, onOpenSettings, onA
         .slice(0, 5),
     [bundle, today],
   );
+  const debits = useMemo(() => (bundle ? upcomingCardDebits(bundle, today) : []), [bundle, today]);
+  const dueNotices = useMemo(() => (bundle ? debitDueNotices(bundle, today) : []), [bundle, today]);
   const estimated = useMemo(() => estimatedTransactions(bundle?.transactions ?? []), [bundle]);
 
   const recalc = (kind: "week" | "month") => async () => {
@@ -98,6 +105,18 @@ export function HomeView({ tabBar, today, version, settings, onOpenSettings, onA
     if (bundle && isReviewDue(bundle.subscriptionReviews, bundle.transactions, today)) {
       notices.push({ key: "subscription", text: "サブスクを見直す時期です", action: { label: "見直す", run: onGoSummary } });
     }
+    for (const d of dueNotices) {
+      const card = bundle?.accounts.find((a) => a.id === d.cardId && a.deletedAt === null);
+      if (!card || !bundle) continue;
+      notices.push({
+        key: `debit-${d.cardId}`,
+        text: `${d.date === today ? "今日は" : `${formatMonthDayWeekday(d.date)}は`}${d.cardName}の引き落とし日です`,
+        action: {
+          label: "引き落としを記録",
+          run: () => onOpenEntry({ kind: "new", date: d.date, transfer: prepareCardDebitOn(card, bundle.accounts.filter((a) => a.deletedAt === null), d.amount, d.date) }),
+        },
+      });
+    }
     if (summary.salaryPending) {
       notices.push({ key: "salary", text: `${formatMonthDayWeekday(summary.salaryPending)}の給料明細がまだです`, action: { label: "入れる", run: onOpenPayroll } });
     }
@@ -121,9 +140,49 @@ export function HomeView({ tabBar, today, version, settings, onOpenSettings, onA
         {summary && (
           <>
             {summary.firstUse && <WelcomeCard onGoAssets={onGoAssets} onGoCategories={onGoCategories} onAdd={() => onAdd(today)} onOpenSettings={onOpenSettings} />}
-            <WeekCard week={summary.week} bars={summary.week.bars} figure={settings.homeMainFigure} today={today} hasData={summary.hasTransactions} onRecalc={recalc("week")} />
+            <WeekCard
+              week={summary.week}
+              bars={summary.week.bars}
+              figure={settings.homeMainFigure}
+              today={today}
+              hasData={summary.hasTransactions}
+              onRecalc={recalc("week")}
+              manual={summary.manual}
+              limitText={summary.limit ? `使い切れる上限：週 ${formatYen(summary.limit.week)}` : null}
+            />
             <UsableCard summary={summary} />
-            <MonthCard month={summary.month} hasData={summary.hasTransactions} onRecalc={recalc("month")} onOpenPayroll={onOpenPayroll} />
+            <MonthCard
+              month={summary.month}
+              hasData={summary.hasTransactions}
+              onRecalc={recalc("month")}
+              onOpenPayroll={onOpenPayroll}
+              manual={summary.manual}
+              limitText={summary.limit && summary.limit.month !== null ? `使い切れる上限：月 ${formatYen(summary.limit.month)}` : null}
+            />
+            {debits.length > 0 && (
+              <section className="card list-card debit-list" aria-label="引き落とし予定">
+                <h2 className="list-head">
+                  <span>引き落とし予定</span>
+                </h2>
+                <ul className="list">
+                  {debits.map((d) => (
+                    <li key={`${d.cardId}-${d.date}`} className="list-row static">
+                      <span className="list-main">
+                        <span className="list-name">
+                          {formatMonthDayWeekday(d.date)} {d.cardName}
+                        </span>
+                        <span className="list-sub">
+                          {d.paymentAccountName}から{d.source === "estimate" ? "・見込み（照合していない明細の合計）" : ""}
+                        </span>
+                        {d.shortfall > 0 && <span className="list-sub caution">残高が {formatYen(d.shortfall)} 足りません</span>}
+                      </span>
+                      <span className="list-amount">{formatYen(d.amount)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="field-hint list-intro">カードで使った時点で使える額から引いているので、使える額には影響しません。</p>
+              </section>
+            )}
 
             <button type="button" className="link-row" onClick={() => setPage("reserves")}>
               <span>取り置き</span>

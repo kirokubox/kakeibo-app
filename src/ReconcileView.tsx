@@ -62,6 +62,9 @@ interface LoadedCsv {
   fileName: string;
   rows: CsvRow[];
   skipped: number;
+  /** 取り消しの組（照合から外した） */
+  cancelled: number;
+  notBilled: number;
 }
 
 function dateWithYear(d: string): string {
@@ -162,7 +165,7 @@ export function ReconcileView({ card, accounts, today, version, showToast, onBac
         return;
       }
       const parsed = readRows(rows, headerRow, map);
-      applyCsv({ fileName: file.name, rows: parsed.rows, skipped: parsed.skipped });
+      applyCsv({ fileName: file.name, rows: parsed.rows, skipped: parsed.skipped, cancelled: parsed.cancelled, notBilled: parsed.notBilled });
     } catch (e) {
       showToast(e instanceof Error ? e.message : "ファイルを読めませんでした");
     } finally {
@@ -243,6 +246,8 @@ export function ReconcileView({ card, accounts, today, version, showToast, onBac
               {csv.fileName}・{csv.rows.length}行・合計 {signed(csvTotal(csv.rows))}
               {csv.skipped > 0 ? `・読めなかった行 ${csv.skipped}` : ""}
             </p>
+            {csv.cancelled > 0 && <p className="list-sub">取り消し {csv.cancelled}件（照合から外しました）</p>}
+            {csv.notBilled > 0 && <p className="list-sub">今回は請求されない行（当月請求額が0） {csv.notBilled}件（照合から外しました）</p>}
             <dl className="rows">
               <div className="row">
                 <dt>1対1で合ったもの</dt>
@@ -468,7 +473,7 @@ export function ReconcileView({ card, accounts, today, version, showToast, onBac
               disabled={!columnsReady(mapping.map)}
               onClick={() => {
                 const parsed = readRows(mapping.raw.rows, mapping.raw.headerRow, mapping.map);
-                applyCsv({ fileName: mapping.raw.fileName, rows: parsed.rows, skipped: parsed.skipped });
+                applyCsv({ fileName: mapping.raw.fileName, rows: parsed.rows, skipped: parsed.skipped, cancelled: parsed.cancelled, notBilled: parsed.notBilled });
                 setMapping(null);
               }}
             >

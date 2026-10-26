@@ -34,19 +34,27 @@ interface Common {
   /** 今の額で決め直す(まだ決まっていなければ決める) */
   onRecalc: () => Promise<void>;
   onOpenPayroll?: () => void;
+  /** 自分で決めた月の予算で出しているとき：使い切れる上限（今の自動の計算）を小さく併記する文章 */
+  limitText?: string | null;
+  /** 自分で決めた月の予算か（メニューの文言が変わる） */
+  manual?: boolean;
 }
 
 /** 決め直しの確認つき︙メニュー */
-function RecalcMenu({ label, onRecalc }: { label: string; onRecalc: () => Promise<void> }) {
+function RecalcMenu({ label, onRecalc, manual }: { label: string; onRecalc: () => Promise<void>; manual?: boolean }) {
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   return (
     <>
-      <KebabMenu items={[{ label: "今の額で決め直す", onSelect: () => setAsking(true) }]} />
+      <KebabMenu items={[{ label: manual ? "今の金額で決め直す" : "今の額で決め直す", onSelect: () => setAsking(true) }]} />
       {asking && (
         <ConfirmSheet
           title={`${label}を決め直しますか`}
-          message="今あるデータで、期間のはじめの時点の使える額から計算しなおします。給料明細を遅れて入れたときや、大きな入力漏れを直したときに使います。"
+          message={
+            manual
+              ? "設定の月の予算の金額で、今の区切りの予算を決めなおします。金額を変えたあとに、今の区切りにすぐ効かせたいときに使います。"
+              : "今あるデータで、期間のはじめの時点の使える額から計算しなおします。給料明細を遅れて入れたときや、大きな入力漏れを直したときに使います。"
+          }
           confirmLabel="決め直す"
           busy={busy}
           onConfirm={() => {
@@ -76,13 +84,13 @@ function Remaining({ remaining, unit }: { remaining: number; unit: string }) {
 }
 
 /** 一番大きい数字のカード(今週)。設定 homeMainFigure で「あと◯円」か「使った額」を大きく出す */
-export function WeekCard({ week, bars, figure, today, hasData, onRecalc }: Common & { week: BudgetFigure; bars: BarProps["bars"]; figure: HomeMainFigure; today: string; hasData: boolean }) {
+export function WeekCard({ week, bars, figure, today, hasData, onRecalc, limitText, manual }: Common & { week: BudgetFigure; bars: BarProps["bars"]; figure: HomeMainFigure; today: string; hasData: boolean }) {
   const budget = week.snapshot?.amount ?? null;
   return (
     <section className="card home-card main-card" aria-label="今週">
       <div className="home-card-head">
         <span className="home-label">今週（{periodLabel(week.start, week.end)}）</span>
-        <RecalcMenu label="今週の予算" onRecalc={onRecalc} />
+        <RecalcMenu label="今週の予算" onRecalc={onRecalc} manual={manual} />
       </div>
       {week.remaining === null || budget === null ? (
         !hasData ? (
@@ -119,6 +127,7 @@ export function WeekCard({ week, bars, figure, today, hasData, onRecalc }: Commo
             </>
           )}
           <DayBars bars={bars} today={today} />
+          {limitText && <span className="home-limit">{limitText}</span>}
         </>
       )}
     </section>
@@ -126,13 +135,13 @@ export function WeekCard({ week, bars, figure, today, hasData, onRecalc }: Commo
 }
 
 /** 今月の予算のカード */
-export function MonthCard({ month, hasData, onRecalc, onOpenPayroll }: Common & { month: BudgetFigure; hasData: boolean }) {
+export function MonthCard({ month, hasData, onRecalc, onOpenPayroll, limitText, manual }: Common & { month: BudgetFigure; hasData: boolean }) {
   const budget = month.snapshot?.amount ?? null;
   return (
     <section className="card home-card" aria-label="今月の予算">
       <div className="home-card-head">
         <span className="home-label">今月の予算（{periodLabel(month.start, month.end)}）</span>
-        <RecalcMenu label="今月の予算" onRecalc={onRecalc} />
+        <RecalcMenu label="今月の予算" onRecalc={onRecalc} manual={manual} />
       </div>
       {month.remaining === null || budget === null ? (
         !hasData ? (
@@ -161,6 +170,7 @@ export function MonthCard({ month, hasData, onRecalc, onOpenPayroll }: Common & 
             <span>使った額 {formatYen(month.spent)}</span>
             <span>予算 {formatYen(budget)}</span>
           </span>
+          {limitText && <span className="home-limit">{limitText}</span>}
         </>
       )}
     </section>

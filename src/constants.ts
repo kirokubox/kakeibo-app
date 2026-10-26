@@ -1,6 +1,6 @@
 import type { Settings } from "./types.js";
 
-export const APP_VERSION = "0.9.0";
+export const APP_VERSION = "0.10.0";
 /** 初期分類の作成・更新時刻（固定）。本人用の初期データの分類は、これより新しい updatedAt を持つので「更新する」で上書きできる。別の端末で初期分類を入れても同じ時刻になり、本人が変えたもの（これより後）が追加読み込みで「新しい方」になる */
 export const SEED_TIMESTAMP = "2026-10-25T00:00:00.000Z";
 export const APP_NAME = "家計簿";
@@ -8,8 +8,8 @@ export const BACKUP_APP_NAME = "kakeibo-app" as const;
 export const BACKUP_SCHEMA_VERSION = 1 as const;
 
 export const DB_NAME = "kakeibo-app";
-/** 1: 全ストアを作成（transactions には索引を付ける）　2: subscriptionReviews（サブスクの見直し）を足す */
-export const DB_VERSION = 2;
+/** 1: 全ストアを作成（transactions には索引を付ける）　2: subscriptionReviews（サブスクの見直し）を足す　3: plannedIncomes（予定収入）を足す */
+export const DB_VERSION = 3;
 export const SETTINGS_STORE = "settings";
 export const SETTINGS_KEY = "app";
 
@@ -24,6 +24,7 @@ export const STORE_LABELS = {
   reserves: "取り置き",
   reserveMoves: "取り置きの出し入れ",
   plannedExpenses: "予定出費",
+  plannedIncomes: "予定収入",
   budgetSnapshots: "予算の記録",
   cardStatements: "カードの請求",
   subscriptionReviews: "サブスクの見直し",
@@ -38,6 +39,8 @@ export function defaultSettings(): Settings {
     paydayHolidayShift: "before",
     defenseFund: 0,
     budgetMonthBoundary: "payday",
+    budgetMode: "auto",
+    monthlyBudget: null,
     homeMainFigure: "remaining",
     weekStart: "monday",
     backupReminderDays: 14,

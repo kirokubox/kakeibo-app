@@ -55,13 +55,15 @@ interface RowProps {
   trailing?: ReactNode;
   dim?: boolean;
   disabled?: boolean;
+  /** 行の下に足すもの（「毎月変わる」のチェックなど） */
+  extra?: ReactNode;
   onPickTarget: () => void;
   onLabel: (label: string) => void;
   onAmount: (amount: number) => void;
 }
 
 /** 給料明細の1行：1段目に行き先（分類／資産）、2段目に項目名と金額 */
-export function PayrollLineRow({ kind, targetName, label, amount, leading, trailing, dim, disabled, onPickTarget, onLabel, onAmount }: RowProps) {
+export function PayrollLineRow({ kind, targetName, label, amount, leading, trailing, dim, disabled, extra, onPickTarget, onLabel, onAmount }: RowProps) {
   return (
     <li className={`payroll-line${dim ? " off" : ""}`}>
       <div className="payroll-line-top">
@@ -84,6 +86,7 @@ export function PayrollLineRow({ kind, targetName, label, amount, leading, trail
         />
         <YenInput value={amount === 0 ? null : amount} onChange={(n) => onAmount(n ?? 0)} ariaLabel={`${label || PAYROLL_KIND_LABELS[kind]}の金額`} />
       </div>
+      {extra}
     </li>
   );
 }

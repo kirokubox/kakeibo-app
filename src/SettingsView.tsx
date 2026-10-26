@@ -17,12 +17,12 @@ import { PayrollEntryView } from "./PayrollEntryView";
 import { PayrollTemplateView } from "./PayrollTemplateView";
 import { FavoritesView } from "./FavoritesView";
 import { RecurringListView } from "./RecurringListView";
-import { validateDefenseFund, validatePayday, validateReminderDays } from "./settingsLogic";
+import { validateDefenseFund, validateMonthlyBudget, validatePayday, validateReminderDays } from "./settingsLogic";
 import { exportBackup, getAllData, requestPersistentStorage, writeImported } from "./storage";
 import type { PersistenceState } from "./storage";
 import { DATA_STORE_NAMES } from "./types";
 import { useToast } from "./Toast";
-import type { BackupFile, BackupSource, BudgetMonthBoundary, HolidayShift, HomeMainFigure, Settings, WeekStart } from "./types";
+import type { BackupFile, BackupSource, BudgetMode, BudgetMonthBoundary, HolidayShift, HomeMainFigure, Settings, WeekStart } from "./types";
 
 interface Props {
   settings: Settings;
@@ -43,12 +43,16 @@ interface Preview {
   source?: BackupSource;
 }
 
-type SettingSheet = "payday" | "shift" | "fund" | "boundary" | "figure" | "reminder" | "weekStart";
+type SettingSheet = "payday" | "shift" | "fund" | "boundary" | "figure" | "reminder" | "weekStart" | "budgetMode" | "monthly";
 
 const SHIFT_OPTIONS: Array<{ value: HolidayShift; label: string }> = (["before", "after", "none"] as const).map((value) => ({ value, label: SHIFT_LABELS[value] }));
 const BOUNDARY_OPTIONS: Array<{ value: BudgetMonthBoundary; label: string; description: string }> = [
   { value: "payday", label: "給料日から次の給料日の前日まで", description: "給料日で区切って予算を決めます" },
   { value: "calendar", label: "暦月（1日〜末日）", description: "毎月1日から末日までで予算を決めます" },
+];
+const BUDGET_MODE_OPTIONS: Array<{ value: BudgetMode; label: string; description: string }> = [
+  { value: "auto", label: "自動（使える額から）", description: "給料日までに使える額から、週と月の予算を自動で決めます" },
+  { value: "manual", label: "自分で決める", description: "月の予算を自分で決め、週の予算はそこから自動で割ります" },
 ];
 const WEEK_START_OPTIONS: Array<{ value: WeekStart; label: string }> = [
   { value: "monday", label: "月曜" },
@@ -378,9 +382,16 @@ export function SettingsView({ settings, initialCategoryPage = null, persistence
             <SettingRow label="給料日" value={`毎月${settings.payday}日`} onClick={() => setSheet("payday")} />
             <SettingRow label="給料日が休日なら" value={SHIFT_LABELS[settings.paydayHolidayShift]} onClick={() => setSheet("shift")} />
             <SettingRow label="生活防衛資金" value={formatYen(settings.defenseFund)} onClick={() => setSheet("fund")} />
+            <SettingRow label="予算の決め方" value={settings.budgetMode === "manual" ? "自分で決める" : "自動（使える額から）"} onClick={() => setSheet("budgetMode")} />
+            {settings.budgetMode === "manual" && (
+              <SettingRow label="月の予算" value={settings.monthlyBudget === null ? "未設定" : formatYen(settings.monthlyBudget)} onClick={() => setSheet("monthly")} />
+            )}
             <SettingRow label="月の予算の区切り" value={settings.budgetMonthBoundary === "payday" ? "給料日から" : "暦月"} onClick={() => setSheet("boundary")} />
           </div>
           <p className="muted small">生活防衛資金は、使える額から先に外しておくお金です。集計の「月」は、どちらを選んでも暦月です。</p>
+          {settings.budgetMode === "manual" && (
+            <p className="muted small">週・月の予算の目標です。使った額は、日常・満足・反省のタグが付いた支出（変動費）だけを数えます。家賃・税金・保険などタグのない支出は入りません。</p>
+          )}
         </section>
 
         <section className="card">
@@ -413,6 +424,35 @@ export function SettingsView({ settings, initialCategoryPage = null, persistence
       )}
       {sheet === "shift" && (
         <ChoiceSheet title="給料日が休日なら" options={SHIFT_OPTIONS} value={settings.paydayHolidayShift} onSelect={(v) => void change({ paydayHolidayShift: v })} onClose={() => setSheet(null)} />
+      )}
+      {sheet === "budgetMode" && (
+        <ChoiceSheet
+          title="予算の決め方"
+          options={BUDGET_MODE_OPTIONS}
+          value={settings.budgetMode}
+          onSelect={(v) => {
+            if (v === settings.budgetMode) return;
+            if (v === "manual" && settings.monthlyBudget === null) setSheet("monthly");
+            else void change({ budgetMode: v }, v === "manual" ? "今の区切りの予算を、自分で決めた月の予算に入れ替えます" : "今の区切りの予算を、自動の計算に戻します");
+          }}
+          onClose={() => setSheet((cur) => (cur === "budgetMode" ? null : cur))}
+        />
+      )}
+      {sheet === "monthly" && (
+        <NumberSheet
+          title="月の予算"
+          description="週・月の予算の目標です。使った額は、日常・満足・反省のタグが付いた支出（変動費）だけを数えます。家賃・税金・保険などタグのない支出は入りません"
+          kind="yen"
+          value={settings.monthlyBudget ?? 0}
+          validate={(n) => validateMonthlyBudget(n)}
+          onSave={(n) =>
+            change(
+              { monthlyBudget: n, budgetMode: "manual" },
+              settings.budgetMode === "manual" ? "次の区切りから効きます。今の区切りにすぐ効かせるときは、ホームの月の予算の︙「今の金額で決め直す」" : "月の予算を決めました",
+            )
+          }
+          onClose={() => setSheet(null)}
+        />
       )}
       {sheet === "boundary" && (
         <ChoiceSheet

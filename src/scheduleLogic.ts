@@ -47,8 +47,11 @@ export function cardPaymentsBetween(card: CardSchedule, from: string, to: string
     .filter((d) => d >= from && d <= to);
 }
 
-/** 給料明細のひな形から、その月（YYYY-MM）の支給日と手取りの見込み（前回の金額で計算） */
+/**
+ * 給料明細のひな形から、その月（YYYY-MM）の支給日と手取りの見込み（前回の金額で計算）。
+ * 「毎月変わる」行（残業代など）は除く（前回の金額を毎月入る前提にしない）。
+ */
 export function payrollForecast(p: Payroll, ym: string): { date: string; takeHome: number } {
-  const totals = payrollTotals(p.lines.map((l) => ({ kind: l.kind, amount: lineInitialAmount(p, l) })));
+  const totals = payrollTotals(p.lines.filter((l) => !l.variable).map((l) => ({ kind: l.kind, amount: lineInitialAmount(p, l) })));
   return { date: payrollDateOf(p, ym), takeHome: totals.takeHome };
 }

@@ -1,11 +1,12 @@
 // サブスク見直しのロジック（画面から切り離した純粋なロジック）。
 // 対象：サブスクの分類（サブスク＞サブスク。v0.8.0 までの固定費＞サブスクも）の支出。内容ごとにまとめ、3か月に1回「続ける／やめる」を記録する。
 import { daysBetween } from "./budgetLogic.js";
-import { toDateKey } from "./dateUtils.js";
+import { addDays, toDateKey } from "./dateUtils.js";
+import { nextOccurrence } from "./recurrence.js";
 import { addMonths } from "./periodLogic.js";
 import { seedCategoryId } from "./seedCategories.js";
 import { normalizeText } from "./searchLogic.js";
-import type { Base, SubscriptionDecision, SubscriptionReview, Transaction } from "./types.js";
+import type { Base, Id, Recurring, SubscriptionDecision, SubscriptionReview, Transaction } from "./types.js";
 
 /** 初期分類「サブスク＞サブスク」のID（一般向けの初期分類）。本人が名前を変えても同じIDで判定する */
 export const SUBSCRIPTION_CATEGORY_ID = seedCategoryId("expense", "サブスク", "サブスク");
@@ -33,6 +34,8 @@ export interface SubscriptionSummary {
   count: number;
   /** 直近の支払いが毎月続いている */
   monthly: boolean;
+  /** 直近の支払いの分類（やめるときに、同じ分類の繰り返しを探す） */
+  categoryId?: Id;
 }
 
 function isSubscriptionTx(t: Transaction): boolean {
@@ -74,6 +77,7 @@ export function summarizeSubscriptions(txs: readonly Transaction[]): Subscriptio
       firstDate: list[0].date,
       count: list.length,
       monthly: isMonthly(list.map((t) => t.date)),
+      ...(last.categoryId ? { categoryId: last.categoryId } : {}),
     });
   }
   return out.sort((a, b) => (a.lastDate < b.lastDate ? 1 : a.lastDate > b.lastDate ? -1 : a.key < b.key ? -1 : 1));
@@ -181,4 +185,27 @@ export function monthlyTotal(summaries: readonly SubscriptionSummary[], decision
     if (s.monthly && !isStale(s.lastDate, today) && !(d && d.decision === "cancel")) sum += s.amount;
   }
   return sum;
+}
+
+// ---- 「やめる」で繰り返しを終わりにする（改善2） ----
+
+/**
+ * 「やめる」を押した内容と同じ繰り返し：同じ内容（前後の空白・全角半角を無視して一致）で、同じ分類の、支出で、終わっていないもの。
+ * 終わっていない＝終わりの日がない、またはこれから作る予定がまだある。
+ */
+export function findMatchingRecurrings(recurrings: readonly Recurring[], content: string, categoryId: Id | undefined, today: string): Recurring[] {
+  const key = subscriptionKey(content);
+  return recurrings.filter((r) => {
+    if (r.deletedAt !== null || r.template.type !== "expense") return false;
+    if (subscriptionKey(r.template.content) !== key) return false;
+    if (categoryId !== undefined && r.template.categoryId !== categoryId) return false;
+    return nextOccurrence(r, today) !== null;
+  });
+}
+
+/** 繰り返しを終わりにする：終わりの日＝次の予定日の前日（作り済みの明細は残す）。もう予定がなければ null */
+export function endRecurringBeforeNext(rec: Recurring, today: string): Recurring | null {
+  const next = nextOccurrence(rec, today);
+  if (!next) return null;
+  return { ...rec, endDate: addDays(next.date, -1) };
 }

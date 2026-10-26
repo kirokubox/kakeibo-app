@@ -147,3 +147,45 @@ test("毎月の合計の目安：やめる内容は除く", () => {
   assert.equal(monthlyTotal(s, d, "2026-10-26"), 1000);
   assert.equal(monthlyTotal(s, new Map(), "2027-03-01"), 0); // 最近は払っていないものは数えない;
 });
+
+// ---- 改善2：「やめる」で繰り返しを終わりにする ----
+
+import { endRecurringBeforeNext, findMatchingRecurrings } from "../src/subscriptionLogic.js";
+import type { Recurring } from "../src/types.js";
+
+function subRec(id: string, content: string, extra: Partial<Recurring> = {}, categoryId: string = SUBSCRIPTION_CATEGORY_ID): Recurring {
+  return {
+    id, createdAt: T0, updatedAt: T0, deletedAt: null,
+    template: { type: "expense", amount: 990, accountId: "a1", categoryId, content, memo: "" },
+    rule: { every: "month", day: 15 }, startDate: "2026-06-15", generatedThrough: "2026-10-15", holidayShift: "none", estimated: false,
+    ...extra,
+  };
+}
+
+test("「やめる」：同じ内容（空白・全角半角の違いを無視）で同じ分類の、終わっていない繰り返しを見つける", () => {
+  const recs = [
+    subRec("r1", " ＴＥＳＴ配信 "),
+    subRec("r2", "TEST配信", {}, "seed:expense:その他/その他"), // 分類が違う
+    subRec("r3", "別の配信"),
+    subRec("r4", "TEST配信", { endDate: "2026-09-30" }), // もう終わっている
+    subRec("r5", "TEST配信", { deletedAt: T0 }),
+    subRec("r6", "TEST配信", { template: { type: "income", amount: 1, accountId: "a1", categoryId: SUBSCRIPTION_CATEGORY_ID, content: "TEST配信", memo: "" } }),
+  ];
+  const found = findMatchingRecurrings(recs, "TEST配信", SUBSCRIPTION_CATEGORY_ID, "2026-10-26");
+  assert.deepEqual(found.map((r) => r.id), ["r1"]);
+  // 一致しなければ出さない
+  assert.deepEqual(findMatchingRecurrings(recs, "存在しない内容", SUBSCRIPTION_CATEGORY_ID, "2026-10-26"), []);
+});
+
+test("繰り返しを終わりにする：終わりの日＝次の予定日の前日。作り済みの明細は触らない", () => {
+  const ended = endRecurringBeforeNext(subRec("r1", "TEST配信"), "2026-10-26");
+  assert.equal(ended?.endDate, "2026-11-14");
+  assert.equal(ended?.generatedThrough, "2026-10-15");
+  // もう予定がなければ null
+  assert.equal(endRecurringBeforeNext(subRec("r4", "TEST配信", { endDate: "2026-09-30" }), "2026-10-26"), null);
+});
+
+test("まとめに直近の分類を持つ（やめるときに同じ分類の繰り返しを探すため）", () => {
+  const s = summarizeSubscriptions([sub("a", "テスト配信", "2026-10-01")]);
+  assert.equal(s[0].categoryId, SUBSCRIPTION_CATEGORY_ID);
+});

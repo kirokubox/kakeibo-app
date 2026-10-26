@@ -7,13 +7,23 @@ import { DATA_STORE_NAMES } from "../src/types.js";
 // 版1のDBが持っていたストア（subscriptionReviews は無い）
 const V1_STORES = ["accounts", "categories", "transactions", "recurrings", "favorites", "payrolls", "reserves", "reserveMoves", "plannedExpenses", "budgetSnapshots", "cardStatements", "settings"];
 
-test("DBの版は2", () => {
-  assert.equal(DB_VERSION, 2);
+test("DBの版は3", () => {
+  assert.equal(DB_VERSION, 3);
 });
 
-test("版1→2：増えたストア（subscriptionReviews）だけを作り、既存のストアには触れない", () => {
+// 版2のDBが持っていたストア（plannedIncomes は無い）
+const V2_STORES = [...V1_STORES, "subscriptionReviews"];
+
+test("版2→3：増えたストア（plannedIncomes）だけを作り、既存のストア（明細など）には触れない", () => {
+  const plan = planUpgrade(V2_STORES);
+  assert.deepEqual(plan.create, ["plannedIncomes"]);
+  assert.equal(plan.createSettings, false);
+  for (const name of V2_STORES) assert.ok(!(plan.create as string[]).includes(name), `${name} は作り直さない`);
+});
+
+test("版1→3：増えたストア（subscriptionReviews・plannedIncomes）だけを作り、既存のストアには触れない", () => {
   const plan = planUpgrade(V1_STORES);
-  assert.deepEqual(plan.create, ["subscriptionReviews"]);
+  assert.deepEqual([...plan.create].sort(), ["plannedIncomes", "subscriptionReviews"]);
   assert.equal(plan.createSettings, false);
   for (const name of V1_STORES) assert.ok(!(plan.create as string[]).includes(name), `${name} は作り直さない`);
 });

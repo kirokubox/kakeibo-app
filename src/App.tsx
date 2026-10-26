@@ -238,6 +238,7 @@ export default function App() {
             onOpenSettings={() => setShowSettings(true)}
             onAdd={openNew}
             onEdit={openEdit}
+            onOpenEntry={openEntry}
             onOpenPayroll={() => openPayroll({})}
             onGoEntries={() => setTab("entries")}
             onGoAssets={() => setTab("assets")}

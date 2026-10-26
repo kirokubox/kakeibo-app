@@ -75,6 +75,12 @@ export interface ColumnMap {
   shop: number | null;
   /** 金額（支払総額があればそれ、なければ利用金額） */
   amount: number | null;
+  /** 当月請求額（2026年5月請求以降のCSVにある列。あれば請求額はこの列の合計にする。なければ null か省略） */
+  billed?: number | null;
+  /** 支払方法（取り消しの組の判定に使う） */
+  method?: number | null;
+  /** 支払月（取り消しの組の判定に使う） */
+  payMonth?: number | null;
 }
 
 /** 見出しのある行を探す（「利用日」を含む行。なければ先頭行） */
@@ -101,6 +107,9 @@ export function detectColumns(header: readonly string[]): ColumnMap {
     date: find("利用日", "ご利用日"),
     shop: find("利用店名・商品名", "利用店名", "利用先", "ご利用先"),
     amount: find("支払総額", "利用金額", "ご利用金額"),
+    billed: find("当月請求額"),
+    method: find("支払方法"),
+    payMonth: find("支払月"),
   };
 }
 
@@ -137,7 +146,7 @@ export interface CsvRow {
   index: number;
   date: string;
   shop: string;
-  /** 請求の金額。返金は負 */
+  /** 請求の金額。返金は負。「当月請求額」の列があれば、その列の金額 */
   amount: number;
 }
 
@@ -145,24 +154,87 @@ export interface ParsedCsv {
   rows: CsvRow[];
   /** 日付か金額が読めずに飛ばした行の数 */
   skipped: number;
+  /** 取り消しの組（「当月請求額」が0の行と、同じ店名・同じ金額の「1回」払いで支払月・請求が空の行）の数。照合から外した */
+  cancelled: number;
+  /** 取り消しの組ではないが、「当月請求額」が0で今回は請求されない行の数。照合から外した */
+  notBilled: number;
 }
 
-/** 見出しの次の行から明細を読む */
+function sameText(a: string, b: string): boolean {
+  return a.normalize("NFKC").replace(/\s+/g, "") === b.normalize("NFKC").replace(/\s+/g, "");
+}
+
+/** 支払方法が「1回」（「1回払い」も同じ） */
+function isOneTime(method: string): boolean {
+  const m = method.normalize("NFKC").replace(/\s+/g, "");
+  return m === "1回" || m === "1回払い";
+}
+
+/**
+ * 見出しの次の行から明細を読む。
+ * 「当月請求額」の列があるときは、請求額はその列の合計にする（支払総額の合計ではない）。
+ * その形式では、取り消しの組を照合から外す：「当月請求額」が0の行と、同じ店名・同じ金額（利用金額）で、
+ * 支払方法が「1回」かつ支払月・当月請求額が空の行。列がない形式（2026年5月請求より前）は今までどおり。
+ */
 export function readRows(rows: readonly string[][], headerRow: number, map: ColumnMap): ParsedCsv {
   const out: CsvRow[] = [];
   let skipped = 0;
-  if (map.date === null || map.amount === null) return { rows: out, skipped };
+  if (map.date === null || map.amount === null) return { rows: out, skipped, cancelled: 0, notBilled: 0 };
+  const billedCol = map.billed ?? null;
+  interface Parsed {
+    date: string;
+    shop: string;
+    gross: number;
+    /** 当月請求額（列がない・空なら null） */
+    billed: number | null;
+    oneTimeEmptyPay: boolean;
+  }
+  const parsed: Parsed[] = [];
   for (let i = headerRow + 1; i < rows.length; i++) {
     const r = rows[i];
     const date = parseCsvDate(r[map.date] ?? "");
-    const amount = parseCsvAmount(r[map.amount] ?? "");
-    if (date === null || amount === null) {
+    const gross = parseCsvAmount(r[map.amount] ?? "");
+    if (date === null || gross === null) {
       skipped++;
       continue;
     }
-    out.push({ index: out.length + 1, date, shop: map.shop !== null ? (r[map.shop] ?? "").trim() : "", amount });
+    const billedText = billedCol !== null ? (r[billedCol] ?? "").trim() : "";
+    const payMonthText = map.payMonth != null ? (r[map.payMonth] ?? "").trim() : "";
+    const methodText = map.method != null ? (r[map.method] ?? "") : "";
+    parsed.push({
+      date,
+      shop: map.shop !== null ? (r[map.shop] ?? "").trim() : "",
+      gross,
+      billed: billedText === "" ? null : parseCsvAmount(billedText),
+      oneTimeEmptyPay: billedText === "" && payMonthText === "" && isOneTime(methodText),
+    });
   }
-  return { rows: out, skipped };
+
+  let cancelled = 0;
+  let notBilled = 0;
+  const dropped = new Set<number>();
+  if (billedCol !== null) {
+    parsed.forEach((z, zi) => {
+      if (z.billed !== 0 || dropped.has(zi)) return;
+      const partner = parsed.findIndex((p, pi) => pi !== zi && !dropped.has(pi) && p.oneTimeEmptyPay && sameText(p.shop, z.shop) && p.gross === z.gross);
+      if (partner >= 0) {
+        dropped.add(zi);
+        dropped.add(partner);
+        cancelled++;
+      }
+    });
+    parsed.forEach((z, zi) => {
+      if (z.billed === 0 && !dropped.has(zi)) {
+        dropped.add(zi);
+        notBilled++;
+      }
+    });
+  }
+  parsed.forEach((p, pi) => {
+    if (dropped.has(pi)) return;
+    out.push({ index: out.length + 1, date: p.date, shop: p.shop, amount: billedCol !== null && p.billed !== null ? p.billed : p.gross });
+  });
+  return { rows: out, skipped, cancelled, notBilled };
 }
 
 /** CSVの合計（請求額の初期値） */

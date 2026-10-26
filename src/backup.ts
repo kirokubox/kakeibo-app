@@ -19,6 +19,7 @@ export function buildBackup(data: DataSet, settings: Settings, exportedAt: strin
     reserves: data.reserves,
     reserveMoves: data.reserveMoves,
     plannedExpenses: data.plannedExpenses,
+    plannedIncomes: data.plannedIncomes,
     budgetSnapshots: data.budgetSnapshots,
     cardStatements: data.cardStatements,
     subscriptionReviews: data.subscriptionReviews,
@@ -247,9 +248,9 @@ const checkPayroll: Check = (v, at) => {
       if (!isRecord(line)) {
         linesProblem = `${p} がオブジェクトではありません`;
       } else if (line.kind === "settlement") {
-        linesProblem = first(reqId(line, "lineId", p), reqId(line, "accountId", p), reqStr(line, "label", p), reqYen(line, "amount", p));
+        linesProblem = first(reqId(line, "lineId", p), reqId(line, "accountId", p), reqStr(line, "label", p), reqYen(line, "amount", p), opt(line, "variable", p, isBool, "true/false"));
       } else if (line.kind === "pay" || line.kind === "deduction") {
-        linesProblem = first(reqId(line, "lineId", p), reqId(line, "categoryId", p), reqStr(line, "label", p), reqYen(line, "amount", p));
+        linesProblem = first(reqId(line, "lineId", p), reqId(line, "categoryId", p), reqStr(line, "label", p), reqYen(line, "amount", p), opt(line, "variable", p, isBool, "true/false"));
       } else {
         linesProblem = `${p}.kind が pay / deduction / settlement のどれかではありません`;
       }
@@ -304,13 +305,24 @@ const checkPlanned: Check = (v, at) =>
     opt(v, "doneAt", at, isIsoDateTime, "時刻つきの日時"),
   );
 
+const checkPlannedIncome: Check = (v, at) =>
+  first(
+    reqStr(v, "name", at),
+    isMonthKey(v.month) ? null : `${at}.month が YYYY-MM 形式ではありません`,
+    reqYen(v, "amount", at),
+    opt(v, "accountId", at, isNonEmptyStr, "文字列"),
+    opt(v, "doneTxId", at, isNonEmptyStr, "文字列"),
+    opt(v, "doneAt", at, isIsoDateTime, "時刻つきの日時"),
+  );
+
 const checkBudget: Check = (v, at) => {
   let basisProblem: string | null;
   if (!isRecord(v.basis)) basisProblem = `${at}.basis がオブジェクトではありません`;
   else {
     basisProblem = null;
     for (const [k, val] of Object.entries(v.basis)) {
-      if (!isYen(val)) {
+      // 数字（整数）のほか、予算の決め方（mode）の文字列を持つ
+      if (!isYen(val) && !(k === "mode" && (val === "manual" || val === "auto"))) {
         basisProblem = `${at}.basis.${k} が整数ではありません`;
         break;
       }
@@ -346,6 +358,7 @@ const STORE_CHECKS: { [K in DataStoreName]: Check } = {
   reserves: checkReserve,
   reserveMoves: checkReserveMove,
   plannedExpenses: checkPlanned,
+  plannedIncomes: checkPlannedIncome,
   budgetSnapshots: checkBudget,
   cardStatements: checkStatement,
   subscriptionReviews: checkReview,
@@ -376,6 +389,9 @@ function checkSettings(s: unknown): string | null {
     reqEnum(s, "paydayHolidayShift", HOLIDAY_SHIFTS, at),
     reqYen(s, "defenseFund", at),
     reqEnum(s, "budgetMonthBoundary", ["payday", "calendar"], at),
+    // 版0.9.0 までのファイルには無い（無ければ auto・null として読む）
+    s.budgetMode === undefined ? null : reqEnum(s, "budgetMode", ["auto", "manual"], at),
+    s.monthlyBudget === undefined || s.monthlyBudget === null || (isYen(s.monthlyBudget) && (s.monthlyBudget as number) > 0) ? null : `${at}.monthlyBudget が null または1円以上の整数ではありません`,
     reqEnum(s, "homeMainFigure", ["remaining", "spent"], at),
     reqEnum(s, "weekStart", ["monday", "sunday"], at),
     Number.isSafeInteger(s.backupReminderDays) && (s.backupReminderDays as number) >= 0 ? null : `${at}.backupReminderDays が 0 以上の整数ではありません`,
@@ -396,6 +412,8 @@ export function validateBackup(input: unknown): ValidationResult {
 
   // 版2より前に書き出したファイルには subscriptionReviews が無い。空として読む
   if (data.subscriptionReviews === undefined) data = { ...data, subscriptionReviews: [] };
+  // 版3より前（DB版2まで）に書き出したファイルには plannedIncomes が無い。空として読む
+  if (data.plannedIncomes === undefined) data = { ...data, plannedIncomes: [] };
   const sourceProblem = checkSource(data.source);
   if (sourceProblem !== null) return fail(sourceProblem);
   const profileProblem = checkProfile(data.profile);
@@ -420,6 +438,11 @@ export function validateBackup(input: unknown): ValidationResult {
   const settingsProblem = checkSettings(data.settings);
   if (settingsProblem !== null) return fail(settingsProblem);
 
+  // 版0.9.0 までのファイルの設定には予算の決め方が無い。自動・金額なしとして読む
+  const rawSettings = data.settings as Rec;
+  if (rawSettings.budgetMode === undefined || rawSettings.monthlyBudget === undefined) {
+    data = { ...data, settings: { ...rawSettings, budgetMode: rawSettings.budgetMode ?? "auto", monthlyBudget: rawSettings.monthlyBudget ?? null } };
+  }
   return { ok: true, backup: data as unknown as BackupFile };
 }
 

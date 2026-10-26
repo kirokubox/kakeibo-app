@@ -7,6 +7,7 @@ import { Icon } from "./Icon";
 import { formatYen } from "./money";
 import { OUTLOOK_LENGTHS, buildOutlook, periodLabel, summarizeOutlook } from "./outlookLogic";
 import type { OutlookColumn, OutlookMonths } from "./outlookLogic";
+import { PlannedIncomeView } from "./PlannedIncomeView";
 import { PlannedView } from "./PlannedView";
 import { PREF_OUTLOOK_MONTHS, readPref, writePref } from "./localPrefs";
 import { RESERVE_INTRO, ReserveRows, ReservesView } from "./ReservesView";
@@ -135,13 +136,14 @@ export function OutlookView({ tabBar, today, version, settings, onOpenSettings, 
             <p className="field-hint outlook-note">
               変動費の見込みは、直近の終わった{outlook.averagedPeriods > 0 ? `${outlook.averagedPeriods}区切り` : "区切り"}の平均です
               {outlook.averagedPeriods === 0 ? "（まだ数えられる区切りがないので「—」。0円として計算しています）" : ""}。今の区切りは、平均から今の区切りでもう使った分（{formatYen(outlook.currentSpent)}）を引いた残りで数えています。
-              給料の見込みは、給料明細のひな形の手取り（前回の金額）です。
+              給料の見込みは、給料明細のひな形の手取り（前回の金額）です。「毎月変わる」にした行（残業代など）は入れていません。予定収入（見込み）は期末の見込みに足していますが、使える額・予算には入れていません。カードの引き落としは参考の行で、期末の見込みには入れていません。
             </p>
             <p className="field-hint outlook-note">3か月より先は、予定出費・年1回や半年ごとの繰り返し・賞与を入れると違いが出ます。</p>
           </section>
         )}
 
         {bundle && <PlannedView bundle={bundle} today={today} usable={usableNow} onChanged={changed} showToast={showToast} />}
+        {bundle && <PlannedIncomeView bundle={bundle} today={today} onChanged={changed} showToast={showToast} />}
 
         {bundle && (
           <section className="card list-card outlook-section" aria-label="取り置き">
@@ -232,6 +234,18 @@ function OutlookTable({ columns }: { columns: OutlookColumn[] }) {
         </tr>
         <tr>
           <th scope="row" className="row-head">
+            ＋予定収入
+            <br />
+            （見込み）
+          </th>
+          {columns.map((c) => (
+            <td key={c.start} className="cell-ref">
+              {c.plannedIncome > 0 ? formatYen(c.plannedIncome) : "—"}
+            </td>
+          ))}
+        </tr>
+        <tr>
+          <th scope="row" className="row-head">
             −予定出費
           </th>
           {columns.map((c) => (
@@ -258,6 +272,16 @@ function OutlookTable({ columns }: { columns: OutlookColumn[] }) {
               {formatYen(c.closing)}
               {c.belowFund && <span className="cell-sub caution">生活防衛資金を下回る見込み</span>}
             </td>
+          ))}
+        </tr>
+        <tr className="ref-row">
+          <th scope="row" className="row-head">
+            （参考）カードの引き落とし
+            <br />
+            使える額には影響しない
+          </th>
+          {columns.map((c) => (
+            <td key={c.start}>{c.cardDebit > 0 ? formatYen(c.cardDebit) : "—"}</td>
           ))}
         </tr>
         <tr className="net-row">

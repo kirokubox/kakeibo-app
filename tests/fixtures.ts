@@ -18,6 +18,7 @@ export function emptyData(): DataSet {
     reserves: [],
     reserveMoves: [],
     plannedExpenses: [],
+    plannedIncomes: [],
     budgetSnapshots: [],
     cardStatements: [],
     subscriptionReviews: [],
@@ -81,6 +82,7 @@ export function sampleData(): DataSet {
   d.reserves = [{ id: "rs1", createdAt: T0, updatedAt: T0, deletedAt: null, name: "テスト旅行", targetAmount: 50000, targetMonth: "2027-03" }];
   d.reserveMoves = [{ id: "rm1", createdAt: T0, updatedAt: T0, deletedAt: null, reserveId: "rs1", date: "2026-10-05", amount: 10000, kind: "assign" }];
   d.plannedExpenses = [{ id: "pe1", createdAt: T0, updatedAt: T0, deletedAt: null, name: "テスト予定", month: "2026-12", amount: 8000 }];
+  d.plannedIncomes = [{ id: "pi1", createdAt: T0, updatedAt: T0, deletedAt: null, name: "テスト賞与", month: "2027-06", amount: 300000, accountId: "a1" }];
   d.budgetSnapshots = [{ id: "b1", createdAt: T0, updatedAt: T0, deletedAt: null, period: "week", start: "2026-10-05", end: "2026-10-11", amount: 21000, basis: { usable: 150000 } }];
   d.cardStatements = [{ id: "cs1", createdAt: T0, updatedAt: T0, deletedAt: null, cardAccountId: "a2", paymentDate: "2026-10-27", actualAmount: 12345, diff: 0 }];
   d.subscriptionReviews = [{ id: "sr1", createdAt: T0, updatedAt: T0, deletedAt: null, reviewedAt: "2026-10-20", items: [{ content: "テスト配信", decision: "keep", amount: 990 }] }];

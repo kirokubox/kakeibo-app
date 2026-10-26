@@ -222,3 +222,20 @@ export function prepareCardDebit(
   };
   return { draft, focus: fromOk ? "amount" : "from" };
 }
+
+/**
+ * ホームの「今日は◯◯カードの引き落とし日です［引き落としを記録］」：金額は確定した請求額（なければ空）、日付は引き落とし日。
+ * 引き落とし口座が選べないときは出金を空にして出金のパネルを開く。金額がないときは金額のテンキーを開く。
+ */
+export function prepareCardDebitOn(card: Account, accounts: readonly Account[], amount: number | null, date: string): { draft: TransferDraft; focus: TransferFocus } {
+  const payId = card.card?.paymentAccountId ?? null;
+  const fromOk = isAccountSelectable(accounts, payId);
+  const draft: TransferDraft = {
+    ...emptyTransferDraft(date),
+    fromId: fromOk ? payId : null,
+    toId: card.id,
+    amount: amount !== null && amount > 0 ? amount : null,
+    content: CARD_DEBIT_CONTENT,
+  };
+  return { draft, focus: fromOk ? "amount" : "from" };
+}

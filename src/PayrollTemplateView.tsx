@@ -247,6 +247,7 @@ function PayrollEditor({ payroll: initial, isNew, accounts, categories, showToas
               </li>
             </ul>
             <p className="field-hint">支給 − 控除 − 天引きで払う後払い ＝ 手取り。手取りは画面の下に出ます。</p>
+            <p className="field-hint">賞与は、別のひな形（例：賞与）を作って、入ったときに入れます。先の見込みは見通しの「予定収入」へ。</p>
             <div className="actions">
               <button
                 type="button"
@@ -304,6 +305,14 @@ function PayrollEditor({ payroll: initial, isNew, accounts, categories, showToas
                       targetName={targetName(l)}
                       label={l.label}
                       amount={l.amount}
+                      extra={
+                        l.kind === "settlement" ? undefined : (
+                          <label className="check-row small">
+                            <input type="checkbox" checked={l.variable === true} onChange={(e) => patchLine(l.lineId, { variable: e.target.checked ? true : undefined })} />
+                            <span>毎月変わる（残業代・休日出勤など。見通しの手取りから除く）</span>
+                          </label>
+                        )
+                      }
                       trailing={
                         <span className="move-btns">
                           <button type="button" className="icon-btn small" aria-label="上へ" disabled={moveLine(p.lines, l.lineId, "up") === null} onClick={() => move(l.lineId, "up")}>

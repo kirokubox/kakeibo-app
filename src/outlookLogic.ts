@@ -1,16 +1,22 @@
 // 見通しの表のロジック（画面から切り離した純粋なロジック）。
 // 給料日ごとの区切りで、3か月・6か月・1年（12列）先までの「期のはじめの使える資産 → 期末の見込み」を出す。
 // 正本：172_家計簿_実装指示_段階6 §8、初期仕様 §6（その区切りの給料でその区切りをまかなえるか。前借りの見え方にしない）
-import { computeBalances, summarizeAccounts } from "./accountLogic.js";
+import { computeBalancesUntil, summarizeAccounts } from "./accountLogic.js";
+import { upcomingCardDebits } from "./cardDebitLogic.js";
 import { addDays, addMonths } from "./dateUtils.js";
-import { nextPaydayAfter, paydayOnOrBefore, recurringFlows, variableSpent } from "./budgetLogic.js";
+import { inflowOf, nextPaydayAfter, outflowOf, paydayOnOrBefore, recurringFlows, usableAccountIds, variableSpent } from "./budgetLogic.js";
 import type { BudgetSettings, CommittedItem, DateSpan } from "./budgetLogic.js";
-import { plannedStatuses, sortPlanned } from "./plannedLogic.js";
+import { openPlannedIncomes, plannedStatuses, sortPlanned } from "./plannedLogic.js";
 import { reserveBalances, spendByTx } from "./reserveLogic.js";
 import { payrollForecast } from "./scheduleLogic.js";
-import type { DataSet, PlannedExpense } from "./types.js";
+import type { CardStatement, DataSet, PlannedExpense, PlannedIncome, Transaction } from "./types.js";
 
-export type OutlookData = Pick<DataSet, "accounts" | "categories" | "transactions" | "recurrings" | "reserves" | "reserveMoves" | "plannedExpenses" | "payrolls">;
+export type OutlookData = Pick<DataSet, "accounts" | "categories" | "transactions" | "recurrings" | "reserves" | "reserveMoves" | "plannedExpenses" | "payrolls"> & {
+  /** 予定収入（省略は無し） */
+  plannedIncomes?: PlannedIncome[];
+  /** カードの請求（引き落とし予定の参考行に使う。省略は無し） */
+  cardStatements?: CardStatement[];
+};
 
 /** 見通しの長さ（給料日ごとの区切りの数）。3か月・6か月・1年 */
 export type OutlookMonths = 3 | 6 | 12;
@@ -35,14 +41,19 @@ export interface OutlookColumn {
   plannedReserved: number;
   /** 変動費の見込み（直近の終わった区切りの平均。1区切りもなければ null） */
   variable: number | null;
-  /** 期末の見込み = はじめ + 収入 − 決まった出費 − 予定出費 − 変動費の見込み */
+  /** 期末の見込み = はじめ + 収入 + 予定収入（見込み） − 決まった出費 − 予定出費 − 変動費の見込み */
   closing: number;
-  /** 収入 − 出費（決まった出費 + 予定出費 + 変動費の見込み） */
+  /** 収入（予定収入を含む） − 出費（決まった出費 + 予定出費 + 変動費の見込み） */
   net: number;
   /** 生活防衛資金を下回る見込み */
   belowFund: boolean;
   fixedItems: CommittedItem[];
   plannedItems: OutlookPlanned[];
+  /** 予定収入（見込み）。期末の見込みに足す（使える額・予算には入れない） */
+  plannedIncome: number;
+  plannedIncomeItems: PlannedIncome[];
+  /** カードの引き落とし（参考。使える額・期末の見込みには影響しない。カードで使った時点で引いているため） */
+  cardDebit: number;
 }
 
 export interface Outlook {
@@ -118,11 +129,44 @@ export function payrollIncomeBetween(data: Pick<OutlookData, "payrolls" | "trans
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 
+/** 今日から見通しの最後の区切りの終わりまでの日数（カードの引き落とし予定を探す範囲） */
+function daysUntil(today: string, months: OutlookMonths, s: BudgetSettings): number {
+  const last = futurePeriods(today, s, months).pop();
+  if (!last) return 0;
+  const [ay, am, ad] = today.split("-").map(Number);
+  const [by, bm, bd] = last.end.split("-").map(Number);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000);
+}
+
+/** 先の日付の明細（今日より後）のうち、from〜to の使える資産から出る額・入る額 */
+export function futureTxFlows(
+  futureTxs: readonly Transaction[],
+  usable: ReadonlySet<string>,
+  from: string,
+  to: string,
+): { out: CommittedItem[]; in: CommittedItem[] } {
+  const result = { out: [] as CommittedItem[], in: [] as CommittedItem[] };
+  for (const t of futureTxs) {
+    if (t.date < from || t.date > to) continue;
+    const label = t.content || "（内容なし）";
+    const out = outflowOf(t, usable);
+    if (out > 0) result.out.push({ kind: "future", date: t.date, label, amount: out });
+    const inflow = inflowOf(t, usable);
+    if (inflow > 0) result.in.push({ kind: "future", date: t.date, label, amount: inflow });
+  }
+  return result;
+}
+
 /** 見通しの表をつくる */
 export function buildOutlook(data: OutlookData, s: BudgetSettings, today: string, months: OutlookMonths): Outlook {
   const accounts = data.accounts.filter((a) => a.deletedAt === null);
   const txs = data.transactions.filter((t) => t.deletedAt === null);
-  const totals = summarizeAccounts(accounts, computeBalances(accounts, txs));
+  // 今日までの明細で残高を出す。先の日付の明細は、その日の区切りの収入・決まった出費として数える
+  const totals = summarizeAccounts(accounts, computeBalancesUntil(accounts, txs, today));
+  const usableIds = usableAccountIds(accounts);
+  const futureTxs = txs.filter((t) => t.date > today);
+  const incomes = openPlannedIncomes(data.plannedIncomes ?? []);
+  const debits = upcomingCardDebits({ accounts, transactions: txs, cardStatements: data.cardStatements ?? [] }, today, daysUntil(today, months, s));
   const planned = sortPlanned(data.plannedExpenses.filter((p) => p.deletedAt === null && p.doneAt === undefined));
   const statuses = plannedStatuses(planned, reserveBalances(data.reserveMoves.filter((m) => m.deletedAt === null)));
   const { average, periods } = averageVariable(data, today, s);
@@ -136,8 +180,17 @@ export function buildOutlook(data: OutlookData, s: BudgetSettings, today: string
     const from = i === 0 ? today : span.start;
     const flows = recurringFlows(data.recurrings, accounts, txs, from, span.end);
     const payroll = payrollIncomeBetween(data, from, span.end);
-    const income = flows.in.reduce((a, b) => a + b.amount, 0) + payroll.reduce((a, b) => a + b.amount, 0);
-    const fixed = flows.out.reduce((a, b) => a + b.amount, 0);
+    const future = futureTxFlows(futureTxs, usableIds, from, span.end);
+    const income = flows.in.reduce((a, b) => a + b.amount, 0) + payroll.reduce((a, b) => a + b.amount, 0) + future.in.reduce((a, b) => a + b.amount, 0);
+    const fixedItems = [...flows.out, ...future.out];
+    const fixed = fixedItems.reduce((a, b) => a + b.amount, 0);
+    // 予定収入：予定出費と同じ区切りの決め方（今の区切りは、過ぎてしまった月のものも入れる）
+    const incomeItems = incomes.filter((p) => {
+      const first = `${p.month}-01`;
+      return first <= span.end && (i === 0 || first >= span.start);
+    });
+    const plannedIncome = incomeItems.reduce((a, p) => a + p.amount, 0);
+    const cardDebit = debits.filter((d) => d.date >= from && d.date <= span.end).reduce((a, d) => a + d.amount, 0);
     // 予定出費：その区切りに入る月（月の1日が区切りの中）。今の区切りは、過ぎてしまった月のものも入れる
     const inPeriod = planned.filter((p) => {
       const first = `${p.month}-01`;
@@ -148,7 +201,7 @@ export function buildOutlook(data: OutlookData, s: BudgetSettings, today: string
     const plannedReserved = plannedItems.reduce((a, p) => a + p.covered, 0);
     // 今の区切りは、平均から「もう使った分」を引いた残り（使った分はすでに資産から減っているため）
     const variable = average === null ? null : i === 0 ? Math.max(0, average - currentSpent) : average;
-    const net = income - fixed - plannedSum - (variable ?? 0);
+    const net = income + plannedIncome - fixed - plannedSum - (variable ?? 0);
     const closing = open + net;
     columns.push({
       start: span.start,
@@ -162,8 +215,11 @@ export function buildOutlook(data: OutlookData, s: BudgetSettings, today: string
       closing,
       net,
       belowFund: closing < s.defenseFund,
-      fixedItems: flows.out,
+      fixedItems,
       plannedItems,
+      plannedIncome,
+      plannedIncomeItems: incomeItems,
+      cardDebit,
     });
     open = closing;
   });

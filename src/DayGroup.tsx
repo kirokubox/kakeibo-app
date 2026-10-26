@@ -14,10 +14,12 @@ interface Props {
   balances?: ReadonlyMap<Id, number>;
   /** 日の収入・支出を出さない（資産の明細） */
   hideSums?: boolean;
+  /** この日付より後の明細に「予定」の印を出す（資産の明細で今日を渡す） */
+  plannedAfter?: string;
 }
 
 /** 1日分のまとまり：見出し（日付・曜日・その日の収入と支出）と、その日の明細の行 */
-export function DayGroup({ group, accountNames, categories, onSelect, balances, hideSums }: Props) {
+export function DayGroup({ group, accountNames, categories, onSelect, balances, hideSums, plannedAfter }: Props) {
   const h = dayHeading(group.date);
   const wd = weekdayOf(group.date);
   const tone = wd === 0 ? "sun" : wd === 6 ? "sat" : "";
@@ -37,7 +39,7 @@ export function DayGroup({ group, accountNames, categories, onSelect, balances, 
       <ul className="list">
         {group.items.map((t) => (
           <li key={t.id}>
-            <TxRow tx={t} accountNames={accountNames} categories={categories} onSelect={onSelect} balanceAfter={balances?.get(t.id)} />
+            <TxRow tx={t} accountNames={accountNames} categories={categories} onSelect={onSelect} balanceAfter={balances?.get(t.id)} planned={plannedAfter !== undefined && t.date > plannedAfter} />
           </li>
         ))}
       </ul>

@@ -2,7 +2,7 @@
 // 予定出費 = 月が決まっている先の出費（旅行・車検など）。取り置きと結ぶと、取り置き済みの額を引いた「足りない額」だけが決まった出費になる。
 import { isMonthKey } from "./dateUtils.js";
 import { isYen } from "./money.js";
-import type { Base, Id, PlannedExpense, Reserve, Transaction } from "./types.js";
+import type { Base, Id, PlannedExpense, PlannedIncome, Reserve, Transaction } from "./types.js";
 
 /** 済みか（済みの判定は doneAt） */
 export function isPlannedDone(p: Pick<PlannedExpense, "doneAt">): boolean {
@@ -141,4 +141,59 @@ export function planSetAside(p: PlannedExpense, reserves: readonly Reserve[], ba
   if (linked) return { kind: "existing", reserve: linked };
   const reserve: Reserve = { ...base, name: reserveNameForPlanned(p, reserves), targetAmount: p.amount, targetMonth: p.month };
   return { kind: "create", reserve, planned: { ...p, reserveId: reserve.id } };
+}
+
+// ---- 予定収入（予定出費の逆。改善2） ----
+// 賞与など、入る月は分かるが額が決まっていない収入。見通しにだけ入り、使える額・週と月の予算・決まった出費には入れない。
+
+export function isIncomeDone(p: Pick<PlannedIncome, "doneAt">): boolean {
+  return p.doneAt !== undefined;
+}
+
+export interface PlannedIncomeDraft {
+  name: string;
+  month: string;
+  amount: number | null;
+}
+
+/** 保存前のチェック。エラーの文章（なければ null） */
+export function validatePlannedIncomeDraft(d: PlannedIncomeDraft): string | null {
+  if (d.name.trim() === "") return "名前を入れてください";
+  if (!isMonthKey(d.month)) return "月を 2027-06 の形で入れてください";
+  if (d.amount === null || !isYen(d.amount) || d.amount <= 0) return "金額を1円以上で入れてください";
+  return null;
+}
+
+/** 一覧の並び：月の順、同じ月は作った順 */
+export function sortPlannedIncomes<T extends PlannedIncome>(list: readonly T[]): T[] {
+  return [...list].sort((a, b) => a.month.localeCompare(b.month) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+}
+
+/** 見通しに入れる予定収入：削除・済みでないもの（月の順） */
+export function openPlannedIncomes(list: readonly PlannedIncome[]): PlannedIncome[] {
+  return sortPlannedIncomes(list.filter((p) => p.deletedAt === null && !isIncomeDone(p)));
+}
+
+/** 「入った」にするときの候補：その月の収入。ほかの予定収入で使い済みのものは除く。日付の順 */
+export function incomeDoneCandidates(p: PlannedIncome, txs: readonly Transaction[], all: readonly PlannedIncome[]): Transaction[] {
+  const used = new Set(all.filter((x) => x.deletedAt === null && x.id !== p.id && x.doneTxId).map((x) => x.doneTxId as Id));
+  return txs
+    .filter((t) => t.deletedAt === null && t.type === "income" && t.date.slice(0, 7) === p.month && !used.has(t.id))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+}
+
+/** 「入った」にする（txId が null なら明細なしで済み） */
+export function markIncomeDone(p: PlannedIncome, txId: Id | null, now: string): PlannedIncome {
+  const next: PlannedIncome = { ...p, doneAt: now };
+  if (txId) next.doneTxId = txId;
+  else delete next.doneTxId;
+  return next;
+}
+
+/** 「入った」を取り消す */
+export function reopenIncome(p: PlannedIncome): PlannedIncome {
+  const next: PlannedIncome = { ...p };
+  delete next.doneAt;
+  delete next.doneTxId;
+  return next;
 }

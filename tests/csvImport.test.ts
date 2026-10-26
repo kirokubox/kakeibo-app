@@ -69,10 +69,11 @@ test("CSVの読み込み：引用符の中のカンマ・改行・二重引用�
 test("列の推定：見出しの名前から。金額は支払総額（なければ利用金額）", () => {
   const rows = parseCsv(CSV);
   const map = detectColumns(rows[findHeaderRow(rows)]);
-  assert.deepEqual(map, { date: 0, shop: 1, amount: 6 });
+  assert.deepEqual([map.date, map.shop, map.amount], [0, 1, 6]);
+  assert.equal(map.billed, null, "当月請求額の列がない形式");
   assert.equal(columnsReady(map), true);
   const noTotal = detectColumns(["利用日", "利用店名・商品名", "利用金額"]);
-  assert.deepEqual(noTotal, { date: 0, shop: 1, amount: 2 });
+  assert.deepEqual([noTotal.date, noTotal.shop, noTotal.amount], [0, 1, 2]);
   const unknown = detectColumns(["日にち", "お店", "ねだん"]);
   assert.equal(columnsReady(unknown), false); // 画面で列を選んでもらう
   // 見出しの前に説明の行があっても、「利用日」の行を見出しにする
@@ -187,4 +188,60 @@ test("速さ：CSV 300行 × アプリ 600件でも十分に速い", () => {
   matchStatement(rows, txs);
   const ms = performance.now() - t0;
   assert.ok(ms < 3000, `照合 ${ms}ms`);
+});
+
+// ---- 改善2：当月請求額の列と、取り消しの組（架空の店名・金額） ----
+
+const HEADER_BILLED = "利用日,利用店名・商品名,利用者,支払方法,利用金額,支払手数料,支払総額,支払月,当月請求額,新規サイン";
+const CSV_BILLED = [
+  HEADER_BILLED,
+  "2026/10/01,テスト食堂,本人,1回払い,1200,0,1200,2026/11,1200,",
+  "2026/10/03,テスト書店,本人,1回払い,3000,0,3000,2026/11,0,", // 取り消しの元（当月請求額 0）
+  "2026/10/04,テスト書店,本人,1回,3000,0,3000,,,", // 取り消しの相手（1回・支払月と請求が空）
+  "2026/10/05,テスト通信,本人,分割,9000,0,9000,2026/11,3000,", // 分割：請求額は当月請求額
+  "2026/10/06,テスト雑貨,本人,1回払い,500,0,500,2027/01,0,", // 相手がない0円（今回は請求されない）
+  "2026/10/07,テスト返品,本人,1回払い,-800,0,-800,2026/11,-800,",
+].join("\r\n");
+
+test("当月請求額の列：請求額はその列の合計（支払総額の合計ではない）", () => {
+  const rows = parseCsv(CSV_BILLED);
+  const map = detectColumns(rows[findHeaderRow(rows)]);
+  assert.notEqual(map.billed, null);
+  const parsed = readRows(rows, 0, map);
+  assert.deepEqual(parsed.rows.map((r) => [r.shop, r.amount]), [["テスト食堂", 1200], ["テスト通信", 3000], ["テスト返品", -800]]);
+  assert.equal(csvTotal(parsed.rows), 3400);
+  assert.deepEqual(parsed.rows.map((r) => r.index), [1, 2, 3]);
+});
+
+test("取り消しの組（当月請求額0の行と、同じ店名・金額の「1回」で支払月・請求が空の行）を照合から外す", () => {
+  const rows = parseCsv(CSV_BILLED);
+  const parsed = readRows(rows, 0, detectColumns(rows[0]));
+  assert.equal(parsed.cancelled, 1);
+  assert.equal(parsed.notBilled, 1);
+  assert.ok(!parsed.rows.some((r) => r.shop === "テスト書店"));
+  // 金額が違う・店名が違うものは組にならない
+  const other = CSV_BILLED.replace("2026/10/04,テスト書店,本人,1回,3000,0,3000,,,", "2026/10/04,テスト書店,本人,1回,3100,0,3100,,,");
+  const p2 = readRows(parseCsv(other), 0, detectColumns(parseCsv(other)[0]));
+  assert.equal(p2.cancelled, 0);
+  assert.equal(p2.notBilled, 2, "相手のいない0円の行は、今回は請求されない行として外す");
+  assert.ok(p2.rows.some((r) => r.shop === "テスト書店" && r.amount === 3100), "金額の違う相手の行は残る");
+});
+
+test("取り消しの組を外すと、アプリの明細との照合も合う", () => {
+  const rows = parseCsv(CSV_BILLED);
+  const parsed = readRows(rows, 0, detectColumns(rows[0]));
+  const txs = [tx("a1", { date: "2026-10-01", amount: 1200 }), tx("a2", { date: "2026-10-05", amount: 3000 }), tx("a3", { date: "2026-10-07", type: "income", amount: 800 })];
+  const m = matchStatement(parsed.rows, txs);
+  assert.equal(m.pairs.length, 3);
+  assert.equal(m.leftoverRows.length, 0);
+});
+
+test("列のない形式（2026年5月請求より前）は今までどおり：支払総額で読み、取り消しの判定をしない", () => {
+  const rows = parseCsv(CSV);
+  const map = detectColumns(rows[findHeaderRow(rows)]);
+  assert.equal(map.billed, null);
+  const parsed = readRows(rows, 0, map);
+  assert.equal(parsed.cancelled, 0);
+  assert.equal(parsed.notBilled, 0);
+  assert.equal(csvTotal(parsed.rows), 1200 + 3000 + 5000 - 800);
 });

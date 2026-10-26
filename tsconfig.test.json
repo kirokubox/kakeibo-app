@@ -46,6 +46,7 @@
     "src/aiMarkdown.ts",
     "src/reconcileLogic.ts",
     "src/csvImport.ts",
+    "src/cardDebitLogic.ts",
     "tests/fixtures.ts",
     "tests/dateUtils.test.ts",
     "tests/money.test.ts",
@@ -78,6 +79,9 @@
     "tests/reconcileLogic.test.ts",
     "tests/csvImport.test.ts",
     "tests/weekStart.test.ts",
-    "tests/profileImport.test.ts"
+    "tests/profileImport.test.ts",
+    "tests/manualBudget.test.ts",
+    "tests/cardDebitLogic.test.ts",
+    "tests/plannedIncome.test.ts"
   ]
 }
