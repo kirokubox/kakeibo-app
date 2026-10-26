@@ -8,6 +8,7 @@ import { monthTitle, weekTitle } from "./periodLogic";
 import { getAllData } from "./storage";
 import { periodAround, shiftSummaryPeriod, summaryRange, switchDay } from "./summaryLogic";
 import type { SummaryPeriod, SummaryPeriodKind } from "./summaryLogic";
+import type { WeekStart } from "./types";
 
 const KINDS: Array<[Exclude<SummaryPeriodKind, "year">, string]> = [
   ["week", "週"],
@@ -16,11 +17,11 @@ const KINDS: Array<[Exclude<SummaryPeriodKind, "year">, string]> = [
 ];
 
 /** 設定の「AIに渡す書き出し」：週・月・任意の期間をMarkdownで書き出す（かぞえ帳・生活記録と同じ入口） */
-export function AiExportCard() {
-  const [period, setPeriod] = useState<SummaryPeriod>(() => periodAround("month", todayKey()));
+export function AiExportCard({ weekStart }: { weekStart: WeekStart }) {
+  const [period, setPeriod] = useState<SummaryPeriod>(() => periodAround("month", todayKey(), undefined, weekStart));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
-  const range = summaryRange(period);
+  const range = summaryRange(period, weekStart);
 
   const title = period.kind === "week" ? weekTitle(period.anchor) : period.kind === "month" ? monthTitle(period.anchor.slice(0, 7)) : "任意の期間";
 
@@ -58,7 +59,7 @@ export function AiExportCard() {
       <h2>AIに渡す書き出し</h2>
       <div className="segmented" role="group" aria-label="期間の種類">
         {KINDS.map(([k, label]) => (
-          <button key={k} type="button" className={`seg${period.kind === k ? " on" : ""}`} aria-pressed={period.kind === k} onClick={() => setPeriod((p) => periodAround(k, switchDay(p, todayKey()), p))}>
+          <button key={k} type="button" className={`seg${period.kind === k ? " on" : ""}`} aria-pressed={period.kind === k} onClick={() => setPeriod((p) => periodAround(k, switchDay(p, todayKey(), weekStart), p, weekStart))}>
             {label}
           </button>
         ))}

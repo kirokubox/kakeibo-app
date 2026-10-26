@@ -8,14 +8,18 @@
 
 - `.mmbak`、変換後のJSON、取り込みレポート、実際の `mapping.json` には、本人の分類名・店名・金額が入ります。**このリポジトリに置かない**（`.gitignore` で `tools/convert-mmbak/` 配下の `*.mmbak`・`*.json`・レポートは除外してあります。例外は架空のテスト用データ `fixtures/` だけ）。
 - 実際の `mapping.json` は資料フォルダ側（`05_開発・Webアプリ/17_家計簿/80_取り込み/`）に置きます。`fixtures/mapping.sample.json` は書き方の見本（架空）です。
-- このスクリプトと `test_convert.py` に、実データの名前・店名・金額を書かないでください。
+- このスクリプトと `test_convert.py` に、実データの名前・店名・金額・本人の分類名を書かないでください。
+- 本人用の初期データ（`kakeibo-profile-*.json`）も個人データです。資料フォルダ側に置き、リポジトリに入れない（`.gitignore` で除外）。
 - `.mmbak` は読み取り専用（`mode=ro`）で開くだけです。元のファイルは動かさず、書き換えません。
 
 ## 使い方
 
 ```
-python convert.py <.mmbakのパス> <mapping.jsonのパス> --json-dir <JSONの出力先> --report-dir <レポートの出力先>
+python convert.py <.mmbakのパス> <mapping.jsonのパス> --profile <本人用の初期データ.json> --json-dir <JSONの出力先> --report-dir <レポートの出力先>
 ```
+
+- `--profile` を渡すと、出力のJSONに本人の分類（`categories`）・設定（`settings`）・`profile` の印を入れる。**新しい端末に、このファイル1つを「設定も読み込む」オンで取り込むだけで、分類・設定・明細・資産・繰り返し・よく使う入力がそろう**。渡さないときは `categories` は空で、設定は一般向けの初期値（このときは「設定も読み込む」をオフのままにする）。レポートに「本人用の初期データを含む」と出る。
+- `mapping.json` の付け替え先（と `fallback`）が実在するかは、`--profile` の分類（表示中のもの）の一覧で確かめる。`--profile` を渡さないときは、名前の確認はしない（形だけ確かめる）。
 
 - `--out-dir` だけを渡すと、JSONとレポートを同じフォルダに出します。
 - 出力ファイル名は、`.mmbak` のファイル名の日付から決まります（例：`MM(2026-09-30-225019).mmbak` → `kakeibo-import-from-mmbak-20260930.json` と `20260930_取り込みレポート.md`）。
@@ -35,11 +39,25 @@ python convert.py <.mmbakのパス> <mapping.jsonのパス> --json-dir <JSONの�
 | 分類 | `mapping.json` の `expense` / `income` で付け替える。内容（店名）で振り分ける表（`rules`）に合わないものは既定の小分類に入れ、レポートの「要確認」に出す |
 | タグ | メモ末尾の `満足`／`反省`（`：理由` つき・` / ` 区切りつき）をタグに移す。理由はメモに残す |
 | 繰り返し | `REPEAT_TYPE` を `mapping.json` の `repeatTypes` で読み替える（1＝毎月、8＝毎月の月末、16＝6か月ごと、17＝毎年）。給料の繰り返し（`skipRecurringPayees`・`skipRecurringCategoryTops`）は取り込まない |
-| 出力のJSON | `categories` は空（付け替え先はアプリの初期分類の固定ID）。`source` に取り込み元の情報を入れる |
+| 出力のJSON | 付け替え先は初期分類の固定ID（`seed:支出|収入:大分類/小分類`）。`--profile` ありなら `categories`・`settings`・`profile` を入れる（なしなら `categories` は空）。`source` に取り込み元の情報を入れる |
 
-### 初期分類の一覧について
+### 分類の一覧について（本人用の初期データ）
 
-`convert.py` の先頭の `SEED_GROUPS` は、アプリの `src/seedCategories.ts` の初期分類と同じです。`mapping.json` の付け替え先が初期分類にあるかを確かめるために持っています。アプリの初期分類を変えたら、ここも合わせてください。
+アプリの初期分類は一般向けです。`mapping.json` の付け替え先は、**本人用の初期データ**（`make_profile.py` で作るJSON）の分類のIDに合わせます（本人のスマホにすでに入っている初期分類＝v0.8.0 のIDと同じ）。`convert.py` には分類名の一覧を持たず、`--profile` の分類で確かめます。
+
+## 本人用の初期データ（make_profile.py）
+
+```
+python make_profile.py <出力するJSON>
+```
+
+- 本人の分類・タグの設定は、git のタグ `v0.8.0` の `src/seedCategories.ts` を読み取って作ります（`--ref` で変えられます。スクリプトに分類名は書きません）。
+- 同じIDの分類は、本人用の名前・タグの設定で一般向けの初期分類を上書きします（`updatedAt` を初期分類の固定値より新しくして、追加インポートで「更新する」になります）。
+- 一般向けにしかない分類（今の `src/seedCategories.ts` にだけあるもの）は、本人の端末では非表示（`hidden: true`）にする行を入れます（消しません）。
+- 設定は、給料日25日・前の平日・生活防衛資金100,000円・月の区切り＝給料日・ホームの数字＝今週あと◯円・週の始まり＝月曜・お知らせ14日。
+- 出力は `app: "kakeibo-app"`・`schemaVersion: 1` のバックアップの形に `profile: { label, createdAt }` を足したもの（ほかのストアは空）。設定の「バックアップから追加」で読むと、「本人用の初期データです」と出て、「設定も読み込む」が初期でオンになります。
+- 出力先は資料フォルダ（`05_開発・Webアプリ/17_家計簿/80_取り込み/kakeibo-profile-yuki.json`）。リポジトリに入れません。
+- `--seed-file`・`--general-file` を渡すと、git を使わずファイルから読みます（テスト用）。
 
 ## 残高の照合
 
@@ -55,7 +73,7 @@ python convert.py <.mmbakのパス> <mapping.jsonのパス> --json-dir <JSONの�
 2. 上のコマンドで変換する。
 3. レポートの「要確認」を見て、`mapping.json` の `rules` に内容（店名の一部）を足し、変換し直す（何度でもやり直せる）。
 4. 残高の照合が全資産で一致していることを確かめる。
-5. アプリの「バックアップを保存」をしてから、「バックアップから追加」でJSONを読み、資産タブの残高をらくな家計簿の資産画面と見比べる。
+5. アプリの「バックアップを保存」をしてから、「バックアップから追加」でJSONを読み（`--profile` ありのファイルは「設定も読み込む」がオン）、資産タブの残高をらくな家計簿の資産画面と見比べる。
 
 ## テスト
 
@@ -64,4 +82,6 @@ cd tools/convert-mmbak
 python -m unittest
 ```
 
-架空のSQLiteをテストの中で作って確かめます（種類の変換、振替の組と組のない片割れ、手数料、残高修正の符号、2022-03より前の繰り込み、残高の照合、分類の付け替え、メモの満足・反省、同じ入力から同じID、`backup.ts` と同じ必須項目・型の検証、元ファイルを変更しないこと）。
+架空のSQLiteと架空の「本人用の初期データ」をテストの中で作って確かめます（種類の変換、振替の組と組のない片割れ、手数料、残高修正の符号、2022-03より前の繰り込み、残高の照合、分類の付け替えと付け替え先の確認が profile の分類で行われること、`--profile` で分類・設定・印が入ること／渡さないときは今までどおり、メモの満足・反省、同じ入力から同じID、`backup.ts` と同じ必須項目・型の検証、元ファイルを変更しないこと、`make_profile.py` の出力。現在56件）。
+
+`fixtures/profile.sample.json` は、架空の旧い初期分類（`fixtures/seed_old.sample.ts`）から `make_profile.py` で作った見本で、アプリ側のテスト（`tests/profileImport.test.ts`）が読みます。一般向けの初期分類（`src/seedCategories.ts`）を変えたら、`python make_profile.py fixtures/profile.sample.json --seed-file fixtures/seed_old.sample.ts --now 2026-10-26T00:00:00.000Z` で作り直してください（`python -m unittest` が食い違いを知らせます）。

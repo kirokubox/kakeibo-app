@@ -47,6 +47,19 @@ function UsableSub({ perDay, days, deadline }: { perDay: string; days: number; d
 
 function UsableBreakdown({ summary, onClose }: { summary: HomeSummary; onClose: () => void }) {
   const u = summary.usable;
+  if (summary.firstUse) {
+    // 資産も明細もないときは、0円やマイナスの数字を出さない
+    return (
+      <BottomSheet title="使える額の内訳" onClose={onClose}>
+        <p className="sheet-message">資産と明細を入れると、ここに使える額の内訳が出ます。</p>
+        <div className="sheet-actions">
+          <button type="button" className="secondary-btn" onClick={onClose}>
+            閉じる
+          </button>
+        </div>
+      </BottomSheet>
+    );
+  }
   return (
     <BottomSheet title="使える額の内訳" onClose={onClose}>
       <dl className="rows breakdown">

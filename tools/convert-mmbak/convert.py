@@ -5,7 +5,10 @@
 仕様の正本：05_開発・Webアプリ/17_家計簿/172_家計簿_実装指示_段階7_らくな家計簿の取り込み_2026-10-26.md
 
 使い方：
-  python convert.py <.mmbak> <mapping.json> --json-dir <JSONの出力先> --report-dir <レポートの出力先>
+  python convert.py <.mmbak> <mapping.json> [--profile <本人用の初期データ.json>] --json-dir <JSONの出力先> --report-dir <レポートの出力先>
+
+--profile を渡すと、本人の分類と設定（make_profile.py で作る本人用の初期データ）を出力のJSONに入れる。
+付け替え先の分類が実在するかの確認も、その分類の一覧で行う（このスクリプトには分類の名前の一覧を持たない）。
 
 個人データ（.mmbak・変換後のJSON・レポート・mapping.json）はリポジトリに入れない。このファイルには実データの名前・金額を書かない。
 """
@@ -14,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import calendar
+import copy
 import datetime as dt
 import hashlib
 import json
@@ -27,45 +31,21 @@ from pathlib import Path
 JST = dt.timezone(dt.timedelta(hours=9))
 UTC = dt.timezone.utc
 
-# ---------------------------------------------------------------------------
-# アプリの初期分類（src/seedCategories.ts と同じ。アプリ側を変えたらここも合わせる）
-# ---------------------------------------------------------------------------
-SEED_GROUPS = {
-    "expense": {
-        "食費": ["ごはん", "外食", "作業カフェ", "おやつ", "飲料", "酒"],
-        "生活費": ["日用品", "美容", "雑貨", "病院・薬"],
-        "衣服費": ["服", "靴", "小物", "クリーニング"],
-        "趣味・娯楽費": ["本・漫画", "映画", "音楽", "ゲーム", "サウナ", "シーシャ", "グッズ", "イベント", "配信", "その他"],
-        "嗜好品": ["タバコ", "アダルト"],
-        "交通費": ["公共交通", "タクシー", "LUUP", "車"],
-        "交際費": ["友達", "マチアプ", "デート", "飲み会", "プレゼント"],
-        "特別費": ["旅行・帰省", "家具・家電", "手続き", "自己投資", "その他"],
-        "固定費": ["家賃", "水道光熱費", "通信", "サブスク", "返済", "天引き"],
-        "税金・保険": ["所得税", "住民税", "国民健康保険", "健康保険料", "厚生年金保険料", "雇用保険料", "民間保険", "車両税"],
-    },
-    "income": {
-        "給与": ["給与", "手当", "賞与"],
-        "副業": ["ホスト", "保険", "転売", "ブログ", "ファッション同行", "ライター"],
-        "一時収入": ["立替返金", "返金", "売却", "ポイント換金", "仕送り", "お祝い金", "残高調整", "その他"],
-        "公的給付": ["失業手当", "給付金", "還付金"],
-    },
-}
-SEED_LEAVES = {(kind, f"{parent}/{child}") for kind, groups in SEED_GROUPS.items() for parent, kids in groups.items() for child in kids}
-
 ACCOUNT_GROUPS = ("cash", "emoney", "bank", "card", "investment", "other")
 HOLIDAY_SHIFTS = ("before", "after", "none")
 BACKUP_APP_NAME = "kakeibo-app"
 BACKUP_SCHEMA_VERSION = 1
 SYSTEM_ADJUST_CATEGORY_UID = "-4"  # らくな家計簿の「差額」（残高修正を収入・支出の形で記録したもの）
 
+# --profile を渡さないときの出力の設定（アプリの一般向けの初期値と同じ。このファイルを取り込むときは「設定も読み込む」をオフのままにする）
 DEFAULT_SETTINGS = {
     "payday": 25,
     "paydayHolidayShift": "before",
-    "defenseFund": 100000,
+    "defenseFund": 0,
     "budgetMonthBoundary": "payday",
     "homeMainFigure": "remaining",
     "weekStart": "monday",
-    "backupReminderDays": 7,
+    "backupReminderDays": 14,
     "lastBackupAt": None,
 }
 
@@ -191,14 +171,44 @@ def split_memo_tag(memo: str) -> tuple[str, str | None]:
 # ---------------------------------------------------------------------------
 # mapping.json
 # ---------------------------------------------------------------------------
-def load_mapping(path: Path) -> dict:
+def leaves_of_profile(profile: dict) -> set[tuple[str, str]]:
+    """本人用の初期データの分類から、付け替え先にできる小分類の集合 {(種類, "大分類/小分類")} を作る。非表示・削除済みは除く"""
+    cats = {c["id"]: c for c in profile.get("categories", []) if isinstance(c, dict)}
+    out: set[tuple[str, str]] = set()
+    for c in cats.values():
+        if c.get("deletedAt") is not None or c.get("hidden"):
+            continue
+        parent = cats.get(c.get("parentId")) if c.get("parentId") else None
+        if parent is None or parent.get("deletedAt") is not None or parent.get("hidden"):
+            continue
+        out.add((c["kind"], f"{parent['name']}/{c['name']}"))
+    return out
+
+
+def load_profile(path: Path) -> dict:
+    """本人用の初期データ（make_profile.py の出力）を読む。バックアップとして正しいかも確かめる"""
+    with path.open("r", encoding="utf-8") as f:
+        profile = json.load(f)
+    problem = validate_backup(profile)
+    if problem is not None:
+        raise ConvertError(f"本人用の初期データ（{path.name}）に問題があります：{problem}")
+    if not isinstance(profile.get("profile"), dict):
+        raise ConvertError(f"{path.name} に profile（本人用の初期データの印）がありません。make_profile.py で作ったファイルを渡してください")
+    if not profile.get("categories"):
+        raise ConvertError(f"{path.name} に分類（categories）がありません")
+    return profile
+
+
+def load_mapping(path: Path, leaves: set[tuple[str, str]] | None = None) -> dict:
     with path.open("r", encoding="utf-8") as f:
         mapping = json.load(f)
-    validate_mapping(mapping)
+    validate_mapping(mapping, leaves)
     return mapping
 
 
-def validate_mapping(mapping: dict) -> None:
+def validate_mapping(mapping: dict, leaves: set[tuple[str, str]] | None = None) -> None:
+    """付け替え表の形を確かめる。leaves（本人用の初期データの小分類）を渡したときは、付け替え先が実在するかも確かめる。
+    渡さないとき（--profile なし）は、分類の名前の確認はしない（アプリ側の分類は端末ごとに違い得るため）"""
     problems: list[str] = []
     for kind in ("expense", "income"):
         table = mapping.get(kind)
@@ -217,13 +227,17 @@ def validate_mapping(mapping: dict) -> None:
                         problems.append(f"{kind}[{key}] の rules に contains（文字列の配列）がありません")
             else:
                 problems.append(f"{kind}[{key}] が文字列でもオブジェクトでもありません")
+            if leaves is None:
+                continue
             for t in targets:
-                if (kind, t) not in SEED_LEAVES:
-                    problems.append(f"{kind}[{key}] の付け替え先「{t}」が初期分類にありません")
+                if (kind, t) not in leaves:
+                    problems.append(f"{kind}[{key}] の付け替え先「{t}」が本人用の初期データの分類にありません")
     fb = mapping.get("fallback", {})
     for kind in ("expense", "income"):
-        if (kind, fb.get(kind, "")) not in SEED_LEAVES:
-            problems.append(f"fallback.{kind}「{fb.get(kind)}」が初期分類にありません")
+        if not isinstance(fb.get(kind), str) or "/" not in fb[kind]:
+            problems.append(f"fallback.{kind} が「大分類/小分類」の形ではありません")
+        elif leaves is not None and (kind, fb[kind]) not in leaves:
+            problems.append(f"fallback.{kind}「{fb[kind]}」が本人用の初期データの分類にありません")
     for g, v in (mapping.get("assetGroups") or {}).items():
         if v not in ACCOUNT_GROUPS:
             problems.append(f"assetGroups[{g}]「{v}」は {'/'.join(ACCOUNT_GROUPS)} のどれかにしてください")
@@ -308,16 +322,16 @@ def mm_balances(con: sqlite3.Connection) -> dict[str, Decimal]:
 # ---------------------------------------------------------------------------
 # 本体
 # ---------------------------------------------------------------------------
-def convert(db_path: Path, mapping: dict, now_iso: str, source_file_name: str | None = None) -> dict:
-    """変換して {'backup': ..., 'stats': ...} を返す"""
+def convert(db_path: Path, mapping: dict, now_iso: str, source_file_name: str | None = None, profile: dict | None = None) -> dict:
+    """変換して {'backup': ..., 'stats': ...} を返す。profile（本人用の初期データ）を渡すと、その分類・設定・印を出力に入れる"""
     con = open_readonly(db_path)
     try:
-        return _convert(con, mapping, now_iso, source_file_name or db_path.name)
+        return _convert(con, mapping, now_iso, source_file_name or db_path.name, profile)
     finally:
         con.close()
 
 
-def _convert(con: sqlite3.Connection, mapping: dict, now_iso: str, source_file_name: str) -> dict:
+def _convert(con: sqlite3.Connection, mapping: dict, now_iso: str, source_file_name: str, profile: dict | None = None) -> dict:
     start = mapping.get("importFrom", "2022-03-01")
     stats: dict = {"importFrom": start, "anomalies": [], "notes": []}
     anomalies: list[str] = stats["anomalies"]
@@ -634,7 +648,7 @@ def _convert(con: sqlite3.Connection, mapping: dict, now_iso: str, source_file_n
             "importFrom": start,
         },
         "accounts": accounts,
-        "categories": [],
+        "categories": copy.deepcopy(profile["categories"]) if profile else [],
         "transactions": transactions,
         "recurrings": recurrings,
         "favorites": favorites,
@@ -644,8 +658,15 @@ def _convert(con: sqlite3.Connection, mapping: dict, now_iso: str, source_file_n
         "plannedExpenses": [],
         "budgetSnapshots": [],
         "cardStatements": [],
-        "settings": dict(DEFAULT_SETTINGS),
+        "settings": dict(profile["settings"]) if profile else dict(DEFAULT_SETTINGS),
     }
+    if profile:
+        # 本人用の初期データを含める：新しい端末に、このファイル1つで分類・設定・明細・資産・繰り返し・よく使う入力がそろう
+        backup["profile"] = dict(profile["profile"])
+        backup["settings"]["lastBackupAt"] = None
+        stats["profile_included"] = True
+    else:
+        stats["profile_included"] = False
 
     # --- 統計 ---
     _FALLBACK.update(mapping["fallback"])
@@ -929,6 +950,25 @@ def _check_template(t, at: str):
     )
 
 
+def _check_category(v, at):
+    return _first(
+        _req(v, "kind", lambda x: x in ("income", "expense"), " income/expense のどちらか", at),
+        None if v.get("parentId") is None or _is_id(v.get("parentId")) else f"{at}.parentId が null または空でない文字列ではありません",
+        _req(v, "name", _is_str, "文字列", at),
+        _req(v, "order", _is_int, "整数", at),
+        _req(v, "tagMode", lambda x: x in ("defaultDaily", "mustChoose", "none"), " defaultDaily/mustChoose/none のどれか", at),
+        _req(v, "hidden", _is_bool, " true/false", at),
+    )
+
+
+def _check_profile(p):
+    if p is None:
+        return None
+    if not isinstance(p, dict):
+        return "profile がオブジェクトではありません"
+    return _first(_req(p, "label", _is_str, "文字列", "profile"), _req(p, "createdAt", _is_iso, "時刻つきの日時", "profile"))
+
+
 def _check_account(v, at):
     card = v.get("card")
     cp = None
@@ -1010,7 +1050,7 @@ def _check_settings(s):
         _req(s, "defenseFund", _is_int, "整数の金額", "settings"),
         _req(s, "budgetMonthBoundary", lambda x: x in ("payday", "calendar"), " payday/calendar のどれか", "settings"),
         _req(s, "homeMainFigure", lambda x: x in ("remaining", "spent"), " remaining/spent のどれか", "settings"),
-        _req(s, "weekStart", lambda x: x == "monday", " monday", "settings"),
+        _req(s, "weekStart", lambda x: x in ("monday", "sunday"), " monday/sunday のどちらか", "settings"),
         None if _is_int(s.get("backupReminderDays")) and s["backupReminderDays"] >= 0 else "settings.backupReminderDays が 0 以上の整数ではありません",
         None if s.get("lastBackupAt") is None or _is_iso(s.get("lastBackupAt")) else "settings.lastBackupAt が null または時刻つきの日時ではありません",
     )
@@ -1018,7 +1058,7 @@ def _check_settings(s):
 
 STORE_CHECKS = {
     "accounts": _check_account,
-    "categories": lambda v, at: None,
+    "categories": lambda v, at: _check_category(v, at),
     "transactions": _check_tx,
     "recurrings": _check_recurring,
     "favorites": _check_favorite,
@@ -1062,7 +1102,7 @@ def validate_backup(data) -> str | None:
             if item["id"] in seen:
                 return f"{at}.id「{item['id']}」が同じ {store} の中で重複しています"
             seen.add(item["id"])
-    return _check_settings(data.get("settings"))
+    return _first(_check_profile(data.get("profile")), _check_settings(data.get("settings")))
 
 
 # ---------------------------------------------------------------------------
@@ -1091,6 +1131,10 @@ def render_report(result: dict, mmbak_name: str, mmbak_exported: str, converted_
     w(f"- 変換した日時：{converted_at}")
     w(f"- 対象期間：{s['importFrom']} 以降（取り込んだ明細は {s['period'][0]} 〜 {s['period'][1]}）。それより前は資産の初期残高に繰り込み済み")
     w(f"- 出力のJSONの検証（backup.ts と同じ必須項目・型）：{'通過' if validation is None else '**失敗：' + validation + '**'}")
+    if s.get("profile_included"):
+        w(f"- 本人用の初期データを含む：分類 {len(b['categories'])} 件と設定を入れた。取り込むときは「設定も読み込む」をオンにする（ファイルに印があるので、初期でオン）")
+    else:
+        w("- 本人用の初期データは含まない（`--profile` なし）。分類は空で、設定は一般向けの初期値。取り込むときは「設定も読み込む」をオフのままにする")
     w(f"- 残高の照合：{'**全資産で一致**' if all_match else '**一致しない資産あり（下の 3 を参照）**'}")
     w("")
 
@@ -1287,7 +1331,7 @@ def _dec(v) -> str:
     return f"{d:,.2f}"
 
 
-_FALLBACK = {"expense": "特別費/その他", "income": "一時収入/その他"}
+_FALLBACK = {"expense": "その他/その他", "income": "その他/その他"}  # 変換のときに mapping.json の fallback で上書きされる
 
 
 def mapping_fallback(b, kind):
@@ -1315,6 +1359,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="らくな家計簿の .mmbak を kakeibo-app のバックアップJSONに変換する")
     ap.add_argument("mmbak", type=Path)
     ap.add_argument("mapping", type=Path)
+    ap.add_argument("--profile", type=Path, help="本人用の初期データ（make_profile.py で作ったJSON）。渡すと分類と設定を出力に入れ、付け替え先の確認もその分類で行う")
     ap.add_argument("--out-dir", type=Path, default=Path("."), help="JSONとレポートの出力先（--json-dir・--report-dir を渡さないとき）")
     ap.add_argument("--json-dir", type=Path)
     ap.add_argument("--report-dir", type=Path)
@@ -1324,7 +1369,12 @@ def main(argv: list[str] | None = None) -> int:
     if not args.mmbak.is_file():
         print(f"ファイルがありません: {args.mmbak}", file=sys.stderr)
         return 2
-    mapping = load_mapping(args.mapping)
+    try:
+        profile = load_profile(args.profile) if args.profile else None
+        mapping = load_mapping(args.mapping, leaves_of_profile(profile) if profile else None)
+    except ConvertError as e:
+        print(str(e), file=sys.stderr)
+        return 2
     now = args.now or dt.datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.datetime.now(UTC).microsecond // 1000:03d}Z"
     ymd = export_date_from_name(args.mmbak.name) or now[:10].replace("-", "")
     json_dir = args.json_dir or args.out_dir
@@ -1332,7 +1382,7 @@ def main(argv: list[str] | None = None) -> int:
     json_dir.mkdir(parents=True, exist_ok=True)
     report_dir.mkdir(parents=True, exist_ok=True)
 
-    result = convert(args.mmbak, mapping, now, args.mmbak.name)
+    result = convert(args.mmbak, mapping, now, args.mmbak.name, profile)
     s = result["stats"]
     problem = validate_backup(result["backup"])
 

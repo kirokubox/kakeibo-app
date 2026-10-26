@@ -33,6 +33,7 @@ export function ReimburseSheet({ initial, expenseAmount, history, onDecide, onRe
 
   return (
     <BottomSheet title="立替（うち誰の分）" onClose={onClose}>
+      <p className="sheet-message">人の分を払ったとき。返ってくるまで、自分の支出には数えません。</p>
       <div className="form">
         <div className="field">
           <label className="field-label" htmlFor="reimb-who">

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  PAYROLL_KIND_LABELS,
+  SETTLEMENT_NOTE,
+  addLineLabel,
   batchTransactions,
   blankLine,
   blankPayroll,
@@ -211,4 +214,22 @@ test("入力チェック", () => {
   assert.match(validateEntryDraft(d) ?? "", /分類/);
   d.lines[5].amount = 0; // 0円の行は作らないので、行き先が空でもよい
   assert.equal(validateEntryDraft(d), null);
+});
+
+test("画面の言葉：精算の行は「天引きで払う後払い」。内部の種類(settlement)は変えない", () => {
+  assert.equal(PAYROLL_KIND_LABELS.settlement, "天引きで払う後払い");
+  assert.equal(PAYROLL_KIND_LABELS.pay, "支給");
+  assert.equal(PAYROLL_KIND_LABELS.deduction, "控除");
+  assert.equal(addLineLabel("settlement"), "＋ 天引きで払う後払いを追加");
+  assert.equal(addLineLabel("pay"), "＋ 支給の行を追加");
+  assert.equal(addLineLabel("deduction"), "＋ 控除の行を追加");
+  assert.match(SETTLEMENT_NOTE, /給料から天引きで払う分/);
+  assert.match(SETTLEMENT_NOTE, /社員証の残高が戻ります/);
+  assert.match(SETTLEMENT_NOTE, /支出には数えません/);
+  // 保存の形は変わらない
+  const line = blankLine("settlement", "x");
+  assert.equal(line.kind, "settlement");
+  // 入力チェックの文章にも新しい言葉が出る
+  const p = blankPayroll({ id: "p", createdAt: T0, updatedAt: T0, deletedAt: null }, 25, "before");
+  assert.equal(validatePayroll({ ...p, name: "テスト", accountId: "a", lines: [line] }), "天引きで払う後払いの資産を選んでください");
 });

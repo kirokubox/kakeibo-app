@@ -5,6 +5,7 @@ import {
   backupNotice,
   calcUsable,
   daysLeftUntilPayday,
+  isFirstUse,
   isSalaryIncome,
   nextPaydayAfter,
   paydayOnOrBefore,
@@ -355,4 +356,22 @@ test("バックアップのお知らせ", () => {
   assert.equal(backupNotice({ ...base, lastBackupAt: null }, true, "2026-10-26"), "まだバックアップを保存していません");
   assert.equal(backupNotice({ ...base, lastBackupAt: "2026-10-20T03:00:00.000Z", backupReminderDays: 14 }, true, "2026-10-26"), null);
   assert.match(backupNotice({ ...base, lastBackupAt: "2026-10-01T03:00:00.000Z", backupReminderDays: 14 }, true, "2026-10-26")!, /25日たちました/);
+});
+
+test("はじめて使う状態：資産も明細もない（削除済みは数えない）。どちらかがあれば違う", () => {
+  assert.equal(isFirstUse(data()), true);
+  assert.equal(isFirstUse(data({ accounts: [account("a1")] })), false);
+  assert.equal(isFirstUse(data({ transactions: [tx("t1")] })), false);
+  assert.equal(isFirstUse(data({ accounts: [account("a1", { deletedAt: T0 })], transactions: [tx("t1", { deletedAt: T0 })] })), true);
+});
+
+test("はじめて使う状態のホーム：内訳にマイナスを出さないための印(firstUse)。資産ができたら外れる", () => {
+  const empty = summarizeHome(data(), [], { ...S, defenseFund: 100000 }, "2026-10-26");
+  assert.equal(empty.firstUse, true);
+  assert.equal(empty.hasTransactions, false);
+  // 生活防衛資金を入れていても、資産がなければ使える額はマイナスになる。だから画面は数字を出さない(firstUse で隠す)
+  assert.ok(empty.usable.usable < 0);
+  const withAccount = summarizeHome(data({ accounts: [account("a1", { openingBalance: 0 })] }), [], S, "2026-10-26");
+  assert.equal(withAccount.firstUse, false);
+  assert.equal(withAccount.hasTransactions, false); // 資産はあるが明細がない：「明細を入れると…」の案内のまま
 });

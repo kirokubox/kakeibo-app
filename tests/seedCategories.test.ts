@@ -1,22 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SEED_GROUPS, buildSeedCategories } from "../src/seedCategories.js";
+import { SEED_GROUPS, buildSeedCategories, seedCategoryId } from "../src/seedCategories.js";
 import { buildBackup } from "../src/backup.js";
 import { SEED_TIMESTAMP, defaultSettings } from "../src/constants.js";
+import { SALARY_PARENT_ID } from "../src/budgetLogic.js";
 import { indexExisting, planImport } from "../src/importPreview.js";
-import type { Category, TagMode } from "../src/types.js";
+import { SETTLE_CATEGORY_ID } from "../src/reimburseLogic.js";
+import { SUBSCRIPTION_CATEGORY_ID, SUBSCRIPTION_CATEGORY_IDS } from "../src/subscriptionLogic.js";
+import type { Category } from "../src/types.js";
 import { emptyData } from "./fixtures.js";
 
+// 一般向けの初期分類（172 改善1 §2-1）。本人に合わせた分類は「本人用の初期データ」で入れる（profileImport.test.ts）
 const NOW = "2026-10-25T00:00:00.000Z";
 const cats: Category[] = buildSeedCategories(NOW);
 const byId = new Map(cats.map((c) => [c.id, c]));
 const children = cats.filter((c) => c.parentId !== null);
 const parents = cats.filter((c) => c.parentId === null);
 
-function leaf(kind: "expense" | "income", parent: string, name: string): Category {
-  const c = children.find((x) => x.kind === kind && byId.get(x.parentId!)?.name === parent && x.name === name);
-  assert.ok(c, `${parent}＞${name} がある`);
-  return c;
+function childrenOf(parentName: string, kind: "expense" | "income"): Category[] {
+  const p = parents.find((x) => x.kind === kind && x.name === parentName);
+  assert.ok(p, `${parentName} がある`);
+  return children.filter((c) => c.parentId === p.id);
 }
 
 test("idが重複しない／共通項目が入っている", () => {
@@ -52,34 +56,37 @@ test("並び順（order）は同じ親の中で 0 から連番", () => {
   }
 });
 
-test("支出の大分類と小分類が 176 §4-1 と一致", () => {
+test("支出の大分類と小分類が 172 改善1 §2-1 の表と一致", () => {
   const expected: Record<string, string[]> = {
-    食費: ["ごはん", "外食", "作業カフェ", "おやつ", "飲料", "酒"],
-    生活費: ["日用品", "美容", "雑貨", "病院・薬"],
-    衣服費: ["服", "靴", "小物", "クリーニング"],
-    "趣味・娯楽費": ["本・漫画", "映画", "音楽", "ゲーム", "サウナ", "シーシャ", "グッズ", "イベント", "配信", "その他"],
-    嗜好品: ["タバコ", "アダルト"],
-    交通費: ["公共交通", "タクシー", "LUUP", "車"],
-    交際費: ["友達", "マチアプ", "デート", "飲み会", "プレゼント"],
-    特別費: ["旅行・帰省", "家具・家電", "手続き", "自己投資", "その他"],
-    固定費: ["家賃", "水道光熱費", "通信", "サブスク", "返済", "天引き"],
-    "税金・保険": ["所得税", "住民税", "国民健康保険", "健康保険料", "厚生年金保険料", "雇用保険料", "民間保険", "車両税"],
+    食費: ["食料品", "外食", "カフェ", "おやつ", "飲み物"],
+    日用品: ["日用品"],
+    交通費: ["電車・バス", "タクシー", "車"],
+    "衣服・美容": ["服・靴", "美容"],
+    "趣味・娯楽": ["趣味", "本", "旅行", "その他"],
+    交際費: ["交際費", "プレゼント"],
+    "健康・医療": ["病院・薬"],
+    住まい: ["家賃", "家具・家電"],
+    水道光熱費: ["電気・ガス・水道"],
+    通信費: ["携帯・ネット"],
+    サブスク: ["サブスク"],
+    保険: ["保険"],
+    税金: ["税金"],
+    特別な出費: ["冠婚葬祭", "その他"],
+    その他: ["その他"],
   };
   const exp = parents.filter((p) => p.kind === "expense");
   assert.deepEqual(exp.map((p) => p.name), Object.keys(expected));
   for (const p of exp) {
     assert.deepEqual(children.filter((c) => c.parentId === p.id).map((c) => c.name), expected[p.name], p.name);
   }
-  // 削除した分類（コンビニ・投資）は入っていない
-  assert.ok(!cats.some((c) => c.name === "コンビニ" || c.name === "投資"));
 });
 
-test("収入の分類が 176 §4-2 と一致し、すべてタグなし", () => {
+test("収入の分類が表と一致し、すべてタグなし", () => {
   const expected: Record<string, string[]> = {
-    給与: ["給与", "手当", "賞与"],
-    副業: ["ホスト", "保険", "転売", "ブログ", "ファッション同行", "ライター"],
-    一時収入: ["立替返金", "返金", "売却", "ポイント換金", "仕送り", "お祝い金", "残高調整", "その他"],
-    公的給付: ["失業手当", "給付金", "還付金"],
+    給与: ["給与", "賞与", "手当"],
+    副業: ["副業"],
+    一時収入: ["立替返金", "返金", "売却", "ポイント", "お祝い", "その他"],
+    その他: ["その他"],
   };
   const inc = parents.filter((p) => p.kind === "income");
   assert.deepEqual(inc.map((p) => p.name), Object.keys(expected));
@@ -90,42 +97,45 @@ test("収入の分類が 176 §4-2 と一致し、すべてタグなし", () => 
   }
 });
 
-test("tagMode の割り当てが初期仕様 §4-3 と一致", () => {
-  const daily = ["ごはん", "外食", "おやつ", "飲料", "作業カフェ", "タバコ", "公共交通", "LUUP", "日用品"];
-  const mustChoose = ["酒", "タクシー", "車", "美容", "雑貨", "アダルト"];
-  const mustChooseGroups = ["交際費", "趣味・娯楽費", "衣服費", "特別費"]; // 大分類ごと全部
-  const noneGroups = ["固定費", "税金・保険"]; // 大分類ごと全部
-  const noneLeaves = ["病院・薬"];
+test("給料の判定と立替の返金の判定が頼る2つの分類は、名前もIDも今のまま", () => {
+  assert.equal(seedCategoryId("income", "給与"), "seed:income:給与");
+  assert.equal(SALARY_PARENT_ID, "seed:income:給与");
+  assert.equal(byId.get(SALARY_PARENT_ID)?.name, "給与");
+  assert.equal(byId.get(SALARY_PARENT_ID)?.kind, "income");
+  assert.equal(SETTLE_CATEGORY_ID, "seed:income:一時収入/立替返金");
+  const settle = byId.get(SETTLE_CATEGORY_ID);
+  assert.equal(settle?.name, "立替返金");
+  assert.equal(byId.get(settle!.parentId!)?.name, "一時収入");
+});
 
-  const expect = (c: Category, mode: TagMode) => assert.equal(c.tagMode, mode, `${byId.get(c.parentId!)?.name}＞${c.name}`);
+test("サブスクの分類のIDは一般向けの初期分類にある。v0.8.0 までのIDも数える", () => {
+  assert.equal(SUBSCRIPTION_CATEGORY_ID, "seed:expense:サブスク/サブスク");
+  assert.ok(byId.has(SUBSCRIPTION_CATEGORY_ID));
+  assert.deepEqual(SUBSCRIPTION_CATEGORY_IDS, ["seed:expense:サブスク/サブスク", "seed:expense:固定費/サブスク"]);
+});
 
+test("一般向けのタグの設定：日常が初期値とタグなしだけ。「満足か反省を選ぶ」は使わない", () => {
+  assert.ok(cats.every((c) => c.tagMode !== "mustChoose"), "mustChoose がない");
+  const daily = new Set([
+    "食費/食料品", "食費/外食", "食費/カフェ", "食費/おやつ", "食費/飲み物", "日用品/日用品", "交通費/電車・バス", "交通費/タクシー", "交通費/車",
+    "衣服・美容/服・靴", "衣服・美容/美容", "趣味・娯楽/趣味", "趣味・娯楽/本", "趣味・娯楽/旅行", "趣味・娯楽/その他", "交際費/交際費", "交際費/プレゼント",
+    "住まい/家具・家電", "特別な出費/冠婚葬祭", "特別な出費/その他", "その他/その他",
+  ]);
+  const none = new Set(["健康・医療/病院・薬", "住まい/家賃", "水道光熱費/電気・ガス・水道", "通信費/携帯・ネット", "サブスク/サブスク", "保険/保険", "税金/税金"]);
   for (const c of children.filter((x) => x.kind === "expense")) {
-    const parentName = byId.get(c.parentId!)!.name;
-    if (mustChooseGroups.includes(parentName)) expect(c, "mustChoose");
-    else if (noneGroups.includes(parentName)) expect(c, "none");
-    else if (noneLeaves.includes(c.name)) expect(c, "none");
-    else if (daily.includes(c.name)) expect(c, "defaultDaily");
-    else if (mustChoose.includes(c.name)) expect(c, "mustChoose");
-    else assert.fail(`${parentName}＞${c.name} の割り当てが仕様にありません`);
+    const key = `${byId.get(c.parentId!)!.name}/${c.name}`;
+    if (daily.has(key)) assert.equal(c.tagMode, "defaultDaily", key);
+    else if (none.has(key)) assert.equal(c.tagMode, "none", key);
+    else assert.fail(`${key} の割り当てが表にありません`);
   }
-
-  // 仕様に出てくる名前が全部実在する（名前の打ち間違いで割り当てが漏れていないか）
-  assert.equal(leaf("expense", "食費", "ごはん").tagMode, "defaultDaily");
-  assert.equal(leaf("expense", "食費", "酒").tagMode, "mustChoose");
-  assert.equal(leaf("expense", "嗜好品", "タバコ").tagMode, "defaultDaily");
-  assert.equal(leaf("expense", "嗜好品", "アダルト").tagMode, "mustChoose");
-  assert.equal(leaf("expense", "交通費", "公共交通").tagMode, "defaultDaily");
-  assert.equal(leaf("expense", "交通費", "LUUP").tagMode, "defaultDaily");
-  assert.equal(leaf("expense", "交通費", "タクシー").tagMode, "mustChoose");
-  assert.equal(leaf("expense", "交通費", "車").tagMode, "mustChoose");
-  assert.equal(leaf("expense", "生活費", "日用品").tagMode, "defaultDaily");
-  assert.equal(leaf("expense", "生活費", "美容").tagMode, "mustChoose");
-  assert.equal(leaf("expense", "生活費", "雑貨").tagMode, "mustChoose");
-  assert.equal(leaf("expense", "生活費", "病院・薬").tagMode, "none");
-  for (const name of [...daily, ...mustChoose]) assert.ok(children.some((c) => c.name === name), `${name} がある`);
-
+  assert.equal(children.filter((c) => c.kind === "expense").length, daily.size + none.size);
   // 大分類は選んで記録しないので none
   for (const p of parents) assert.equal(p.tagMode, "none");
+  // 同じ大分類の中に同じ名前の小分類がない
+  for (const p of parents) {
+    const names = childrenOf(p.name, p.kind).map((c) => c.name);
+    assert.equal(new Set(names).size, names.length, p.name);
+  }
 });
 
 test("初期分類のidは何度作っても同じ（別の端末のバックアップを足しても二重にならない）", () => {

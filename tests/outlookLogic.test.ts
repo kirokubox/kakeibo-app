@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { BudgetSettings } from "../src/budgetLogic.js";
-import { averageVariable, buildOutlook, futurePeriods, pastPeriods, payrollIncomeBetween, periodLabel } from "../src/outlookLogic.js";
+import { OUTLOOK_LENGTHS, averageVariable, buildOutlook, futurePeriods, pastPeriods, payrollIncomeBetween, periodLabel, summarizeOutlook } from "../src/outlookLogic.js";
 import type { OutlookData } from "../src/outlookLogic.js";
 import type { Payroll, PlannedExpense, Recurring, ReserveMove } from "../src/types.js";
 import { T0, account, emptyData, tx } from "./fixtures.js";
@@ -129,4 +129,38 @@ test("給料明細の手取りの見込み：その日の給料明細をすで�
   // 前回の金額が手取りの見込みになる
   const updated = { ...d, payrolls: [{ ...payroll, lastAmounts: { l1: 310000 } }] };
   assert.equal(payrollIncomeBetween(updated, "2026-11-01", "2026-11-30")[0].amount, 250000);
+});
+
+test("見通しの長さ：3か月・6か月・1年(12列)", () => {
+  assert.deepEqual(OUTLOOK_LENGTHS, [3, 6, 12]);
+  assert.equal(futurePeriods("2026-10-26", S, 12).length, 12);
+  const o = buildOutlook(sample(), S, "2026-10-26", 12);
+  assert.equal(o.columns.length, 12);
+  // 区切りは給料日ごとに途切れず続き、期末の見込みは次の列の期のはじめになる
+  for (let i = 1; i < 12; i++) {
+    assert.equal(o.columns[i].openAssets, o.columns[i - 1].closing);
+    const prevEnd = o.columns[i - 1].end;
+    const next = new Date(`${prevEnd}T00:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    assert.equal(o.columns[i].start, next.toISOString().slice(0, 10));
+  }
+  assert.equal(o.columns[11].start, "2027-09-24"); // 2027-09-25 は土曜 → 前の平日
+  // 3か月・6か月の最初の3・6列は、1年の最初の列と同じ
+  assert.deepEqual(buildOutlook(sample(), S, "2026-10-26", 3).columns, o.columns.slice(0, 3));
+  assert.deepEqual(buildOutlook(sample(), S, "2026-10-26", 6).columns, o.columns.slice(0, 6));
+});
+
+test("まとめ：収入−出費の合計・期末の見込みが一番低い区切り・生活防衛資金を下回る区切りの数", () => {
+  const o = buildOutlook(sample(), { ...S, defenseFund: 500000 }, "2026-10-26", 12);
+  const sm = summarizeOutlook(o.columns);
+  assert.equal(sm.net, o.columns.reduce((a, c) => a + c.net, 0));
+  const lowest = o.columns.reduce((m, c) => (c.closing < m.closing ? c : m));
+  assert.deepEqual(sm.lowest, { start: lowest.start, end: lowest.end, closing: lowest.closing });
+  assert.equal(sm.belowCount, o.columns.filter((c) => c.belowFund).length);
+  assert.ok(sm.belowCount >= 2);
+  // 手計算できる小さな例：期末 100, 50, 50, 200 → 一番低いのは早い方の 50
+  const col = (start: string, closing: number, net: number, belowFund: boolean) => ({ start, end: start, closing, net, belowFund }) as never;
+  const small = summarizeOutlook([col("2026-10-23", 100, 10, false), col("2026-11-25", 50, -50, true), col("2026-12-25", 50, 0, true), col("2027-01-25", 200, 150, false)]);
+  assert.deepEqual(small, { net: 110, lowest: { start: "2026-11-25", end: "2026-11-25", closing: 50 }, belowCount: 2 });
+  assert.deepEqual(summarizeOutlook([]), { net: 0, lowest: null, belowCount: 0 });
 });

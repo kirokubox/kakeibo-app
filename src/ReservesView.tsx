@@ -6,17 +6,23 @@ import { formatYen } from "./money";
 import { ReserveDetailView } from "./ReserveDetailView";
 import { ReserveEditor } from "./ReserveEditor";
 import { reserveBalances, splitReserves, targetNote, totalReserveBalance } from "./reserveLogic";
+import { plannedNotesByReserve } from "./plannedLogic";
 import type { ShowToast } from "./Toast";
 import type { Id, Reserve } from "./types";
+
+/** 取り置きの一覧の上の説明 */
+export const RESERVE_INTRO = "今あるお金を、アプリの中で先に別枠にしておきます。口座は動きません";
 
 interface RowsProps {
   reserves: Reserve[];
   balances: ReadonlyMap<Id, number>;
+  /** 結んでいる予定出費の説明（取り置きのid → 「予定：帰省 2027-01」） */
+  plannedNotes?: ReadonlyMap<Id, string>;
   onOpen: (id: Id) => void;
 }
 
 /** 取り置きの行(名前・目標・使う月・残高) */
-export function ReserveRows({ reserves, balances, onOpen }: RowsProps) {
+export function ReserveRows({ reserves, balances, plannedNotes, onOpen }: RowsProps) {
   return (
     <ul className="list">
       {reserves.map((r) => {
@@ -29,6 +35,7 @@ export function ReserveRows({ reserves, balances, onOpen }: RowsProps) {
               <span className="list-main">
                 <span className="list-name">{r.name}</span>
                 {(note || month) && <span className="list-sub">{[month, note].filter(Boolean).join("・")}</span>}
+                {plannedNotes?.get(r.id) && <span className="list-sub">{plannedNotes.get(r.id)}</span>}
               </span>
               <span className="list-amount">{formatYen(balance)}</span>
               <Icon name="chevron-right" size={18} />
@@ -59,6 +66,7 @@ export function ReservesView({ bundle, today, usable, initialOpenId = null, init
   const { open, closed } = useMemo(() => splitReserves(bundle.reserves), [bundle.reserves]);
   const balances = useMemo(() => reserveBalances(bundle.reserveMoves), [bundle.reserveMoves]);
   const total = totalReserveBalance(bundle.reserves, bundle.reserveMoves);
+  const plannedNotes = useMemo(() => plannedNotesByReserve(bundle.plannedExpenses), [bundle.plannedExpenses]);
   const opened = openId ? bundle.reserves.find((r) => r.id === openId && r.deletedAt === null) : undefined;
 
   if (opened) {
@@ -86,18 +94,20 @@ export function ReservesView({ bundle, today, usable, initialOpenId = null, init
         </section>
         {open.length === 0 ? (
           <section className="card">
+            <p className="field-hint list-intro">{RESERVE_INTRO}</p>
             <p>取り置きはまだありません。旅行や車検など、先の出費のためにお金を外しておくときに作ります。</p>
           </section>
         ) : (
           <section className="card list-card">
-            <ReserveRows reserves={open} balances={balances} onOpen={setOpenId} />
+            <p className="field-hint list-intro">{RESERVE_INTRO}</p>
+            <ReserveRows reserves={open} balances={balances} plannedNotes={plannedNotes} onOpen={setOpenId} />
           </section>
         )}
         {closed.length > 0 && (
           <>
             <h2 className="list-group-title">閉じた取り置き</h2>
             <section className="card list-card">
-              <ReserveRows reserves={closed} balances={balances} onOpen={setOpenId} />
+              <ReserveRows reserves={closed} balances={balances} plannedNotes={plannedNotes} onOpen={setOpenId} />
             </section>
           </>
         )}

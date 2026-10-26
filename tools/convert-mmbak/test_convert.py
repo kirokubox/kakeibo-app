@@ -17,10 +17,45 @@ import unittest
 from pathlib import Path
 
 import convert as cv
+import make_profile as mp
 
 HERE = Path(__file__).parent
 SAMPLE_MAPPING = HERE / "fixtures" / "mapping.sample.json"
 NOW = "2026-10-26T00:00:00.000Z"
+
+# 架空の「旧い初期分類」と「一般向けの初期分類」（seedCategories.ts と同じ書き方）。本人用の初期データはここから作る
+TEST_OLD_SEED = """
+const D = "defaultDaily"; const M = "mustChoose"; const N = "none";
+const EXPENSE = [
+  { kind: "expense", name: "食費", children: [["テスト自炊", D], ["外食", M], ["テストおやつ", D]] },
+  { kind: "expense", name: "交通", children: [["テスト電車", D], ["テスト乗り物", D]] },
+  {
+    kind: "expense",
+    name: "生活",
+    children: [["病院・薬", N], ["テスト雑貨", M]],
+  },
+  { kind: "expense", name: "特別", children: [["その他", M]] },
+];
+const INCOME = [
+  { kind: "income", name: "給与", children: [["給与", N], ["賞与", N]] },
+  { kind: "income", name: "一時収入", children: [["立替返金", N], ["その他", N]] },
+];
+"""
+TEST_GENERAL_SEED = """
+const D = "defaultDaily"; const N = "none";
+const EXPENSE = [
+  { kind: "expense", name: "食費", children: [["食料品", D], ["外食", D]] },
+  { kind: "expense", name: "日用品", children: [["日用品", D]] },
+];
+const INCOME = [
+  { kind: "income", name: "給与", children: [["給与", N], ["賞与", N]] },
+  { kind: "income", name: "副業", children: [["副業", N]] },
+];
+"""
+
+
+def make_test_profile() -> dict:
+    return mp.build_profile(mp.parse_seed_ts(TEST_OLD_SEED), mp.parse_seed_ts(TEST_GENERAL_SEED), NOW)
 JST = dt.timezone(dt.timedelta(hours=9))
 
 
@@ -94,7 +129,7 @@ def build_db(path: Path, orphan: bool = False, broken_date: bool = False, fracti
     tx(6, "1", "2022-03-01", "ランチ", 300, "W", "c_jisui", memo="ランチ / 満足：おいしい")
     tx(7, "1", "2022-03-02", "テストおやつ店", 200, "W", "c_conv")
     tx(8, "1", "2022-03-02", "ストア", 150, "W", "c_conv")
-    tx(9, "1", "2022-03-03", "LUUP", 100, "W", "c_train")
+    tx(9, "1", "2022-03-03", "テスト乗り物", 100, "W", "c_train")
     tx(10, "1", "2022-03-03", "", 160, "W", "c_train")
     tx(11, "1", "2022-03-04", "どこか", 90, "W", "c_unk")
     tx(12, "0", "2022-03-05", "立替の返金", 700, "W", "c_in_other")
@@ -156,14 +191,16 @@ class ConvertTestBase(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self._tmp.name)
         self.db = self.dir / "MM(2026-09-30-225019).mmbak"
-        self.mapping = cv.load_mapping(SAMPLE_MAPPING)
+        self.profile = make_test_profile()
+        self.leaves = cv.leaves_of_profile(self.profile)
+        self.mapping = cv.load_mapping(SAMPLE_MAPPING, self.leaves)
 
     def tearDown(self):
         self._tmp.cleanup()
 
-    def run_convert(self, orphan=False, mapping=None, broken_date=False, fractional=False):
+    def run_convert(self, orphan=False, mapping=None, broken_date=False, fractional=False, profile=None):
         build_db(self.db, orphan=orphan, broken_date=broken_date, fractional=fractional)
-        return cv.convert(self.db, mapping or self.mapping, NOW)
+        return cv.convert(self.db, mapping or self.mapping, NOW, None, profile)
 
     @staticmethod
     def by_id(result, store):
@@ -313,28 +350,28 @@ class TestCategories(ConvertTestBase):
 
     def test_rename_and_deleted_category(self):
         r = self.run_convert()
-        self.assertEqual(self.cat(r, "mm-u6"), "seed:expense:食費/ごはん")  # 自炊 → ごはん
+        self.assertEqual(self.cat(r, "mm-u6"), "seed:expense:食費/テスト自炊")  # 自炊 → テスト自炊
         self.assertEqual(self.cat(r, "mm-u26"), "seed:expense:食費/外食")
-        self.assertEqual(self.cat(r, "mm-u28"), "seed:expense:生活費/病院・薬")  # 旧の大分類の病院
+        self.assertEqual(self.cat(r, "mm-u28"), "seed:expense:生活/病院・薬")  # 旧の大分類の病院
 
     def test_content_rule(self):
         r = self.run_convert()
-        self.assertEqual(self.cat(r, "mm-u7"), "seed:expense:食費/おやつ")  # 店名で振り分け
-        self.assertEqual(self.cat(r, "mm-u9"), "seed:expense:交通費/LUUP")
+        self.assertEqual(self.cat(r, "mm-u7"), "seed:expense:食費/テストおやつ")  # 店名で振り分け
+        self.assertEqual(self.cat(r, "mm-u9"), "seed:expense:交通/テスト乗り物")
 
     def test_default_and_review(self):
         r = self.run_convert()
-        self.assertEqual(self.cat(r, "mm-u8"), "seed:expense:食費/ごはん")  # 表にない内容は既定
-        self.assertEqual(self.cat(r, "mm-u10"), "seed:expense:交通費/公共交通")
+        self.assertEqual(self.cat(r, "mm-u8"), "seed:expense:食費/テスト自炊")  # 表にない内容は既定
+        self.assertEqual(self.cat(r, "mm-u10"), "seed:expense:交通/テスト電車")
         review = r["stats"]["resolver"].review
-        self.assertEqual(sum(review[("expense", "食費/コンビニ", "食費/ごはん")].values()), 1)
-        self.assertEqual(review[("expense", "食費/コンビニ", "食費/ごはん")]["ストア"], 1)
-        self.assertIn(("expense", "交通費/電車", "交通費/公共交通"), review)
-        self.assertNotIn(("expense", "食費/コンビニ", "食費/おやつ"), review)  # 表に合ったものは要確認に出ない
+        self.assertEqual(sum(review[("expense", "食費/コンビニ", "食費/テスト自炊")].values()), 1)
+        self.assertEqual(review[("expense", "食費/コンビニ", "食費/テスト自炊")]["ストア"], 1)
+        self.assertIn(("expense", "交通費/電車", "交通/テスト電車"), review)
+        self.assertNotIn(("expense", "食費/コンビニ", "食費/テストおやつ"), review)  # 表に合ったものは要確認に出ない
 
     def test_unmapped_goes_to_fallback(self):
         r = self.run_convert()
-        self.assertEqual(self.cat(r, "mm-u11"), "seed:expense:特別費/その他")
+        self.assertEqual(self.cat(r, "mm-u11"), "seed:expense:特別/その他")
         self.assertEqual(r["stats"]["resolver"].unmapped[("expense", "食費/ほげ")], 1)
 
     def test_income_other_becomes_tatekae_henkin(self):
@@ -346,7 +383,30 @@ class TestCategories(ConvertTestBase):
         m = copy.deepcopy(self.mapping)
         m["expense"]["食費/自炊"] = "食費/存在しない"
         with self.assertRaises(cv.ConvertError):
+            cv.validate_mapping(m, self.leaves)  # 付け替え先の確認は、本人用の初期データ(profile)の分類の一覧で行う
+
+    def test_targets_are_checked_against_profile_categories_only(self):
+        # 一般向けにしかない（本人の端末では非表示にする）分類は、付け替え先にできない
+        m = copy.deepcopy(self.mapping)
+        m["expense"]["食費/自炊"] = "食費/食料品"
+        with self.assertRaises(cv.ConvertError):
+            cv.validate_mapping(m, self.leaves)
+        # fallback も同じ
+        m = copy.deepcopy(self.mapping)
+        m["fallback"]["expense"] = "日用品/日用品"
+        with self.assertRaises(cv.ConvertError):
+            cv.validate_mapping(m, self.leaves)
+        # 分類の一覧(profile)を渡さないときは、名前の確認はしない（形だけ確かめる）
+        m = copy.deepcopy(self.mapping)
+        m["expense"]["食費/自炊"] = "食費/どこかの分類"
+        cv.validate_mapping(m)
+        m["fallback"]["income"] = "形がちがう"
+        with self.assertRaises(cv.ConvertError):
             cv.validate_mapping(m)
+
+    def test_script_has_no_category_name_list(self):
+        self.assertFalse(hasattr(cv, "SEED_GROUPS"))
+        self.assertFalse(hasattr(cv, "SEED_LEAVES"))
 
 
 class TestTags(ConvertTestBase):
@@ -494,6 +554,188 @@ class TestOutputShape(ConvertTestBase):
         with contextlib.redirect_stdout(io.StringIO()):
             code = cv.main([str(self.db), str(SAMPLE_MAPPING), "--out-dir", str(self.dir / "o"), "--now", NOW])
         self.assertEqual(code, 1)
+
+
+class TestProfile(ConvertTestBase):
+    """--profile（本人用の初期データ）：分類と設定が出力に入る。渡さないときは今までどおり"""
+
+    def test_without_profile_output_is_as_before(self):
+        r = self.run_convert()
+        b = r["backup"]
+        self.assertEqual(b["categories"], [])
+        self.assertNotIn("profile", b)
+        self.assertEqual(b["settings"], cv.DEFAULT_SETTINGS)
+        self.assertFalse(r["stats"]["profile_included"])
+
+    def test_with_profile_categories_settings_and_mark_are_included(self):
+        r = self.run_convert(profile=self.profile)
+        b = r["backup"]
+        self.assertEqual(b["categories"], self.profile["categories"])
+        self.assertEqual(b["settings"], self.profile["settings"])
+        self.assertEqual(b["profile"], self.profile["profile"])
+        self.assertIsNone(cv.validate_backup(b))
+        self.assertTrue(r["stats"]["profile_included"])
+        # 付け替え先のIDは、入れた分類の中に実在する
+        ids = {c["id"] for c in b["categories"]}
+        for t in b["transactions"]:
+            if t.get("categoryId"):
+                self.assertIn(t["categoryId"], ids)
+        # 元の本人用の初期データを書き換えない
+        b["categories"][0]["name"] = "変えた"
+        self.assertNotEqual(self.profile["categories"][0]["name"], "変えた")
+
+    def test_report_says_profile_is_included(self):
+        r = self.run_convert(profile=self.profile)
+        text = cv.render_report(r, self.db.name, "2026-09-30", NOW, 1, "0" * 64, None)
+        self.assertIn("本人用の初期データを含む", text)
+        r2 = cv.convert(self.db, self.mapping, NOW)
+        self.assertIn("本人用の初期データは含まない", cv.render_report(r2, self.db.name, "2026-09-30", NOW, 1, "0" * 64, None))
+
+    def test_load_profile_checks_the_file(self):
+        good = self.dir / "profile.json"
+        good.write_text(json.dumps(self.profile, ensure_ascii=False), encoding="utf-8")
+        self.assertEqual(cv.load_profile(good)["profile"]["label"], mp.PROFILE_LABEL)
+        for name, mutate in (
+            ("印なし", lambda d: d.pop("profile")),
+            ("分類なし", lambda d: d.update(categories=[])),
+            ("別アプリ", lambda d: d.update(app="x")),
+            ("分類の型", lambda d: d["categories"][0].update(tagMode="x")),
+        ):
+            bad = copy.deepcopy(self.profile)
+            mutate(bad)
+            path = self.dir / "bad.json"
+            path.write_text(json.dumps(bad, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaises(cv.ConvertError, msg=name):
+                cv.load_profile(path)
+
+    def test_cli_with_profile(self):
+        build_db(self.db)
+        prof = self.dir / "profile.json"
+        prof.write_text(json.dumps(self.profile, ensure_ascii=False), encoding="utf-8")
+        out_json = self.dir / "j"
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = cv.main([str(self.db), str(SAMPLE_MAPPING), "--profile", str(prof), "--json-dir", str(out_json), "--report-dir", str(self.dir / "r"), "--now", NOW])
+        self.assertEqual(code, 0)
+        data = json.loads((out_json / "kakeibo-import-from-mmbak-20260930.json").read_text(encoding="utf-8"))
+        self.assertIsNone(cv.validate_backup(data))
+        self.assertEqual(len(data["categories"]), len(self.profile["categories"]))
+        self.assertEqual(data["profile"]["label"], mp.PROFILE_LABEL)
+
+    def test_cli_with_profile_rejects_mapping_target_missing_from_profile(self):
+        build_db(self.db)
+        prof = self.dir / "profile.json"
+        small = copy.deepcopy(self.profile)
+        small["categories"] = [c for c in small["categories"] if not c["name"].startswith("テスト乗り物")]
+        prof.write_text(json.dumps(small, ensure_ascii=False), encoding="utf-8")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = cv.main([str(self.db), str(SAMPLE_MAPPING), "--profile", str(prof), "--out-dir", str(self.dir / "o")])
+        self.assertEqual(code, 2)
+        self.assertIn("本人用の初期データの分類にありません", err.getvalue())
+
+
+class TestMakeProfile(unittest.TestCase):
+    def setUp(self):
+        self.old = mp.parse_seed_ts(TEST_OLD_SEED)
+        self.general = mp.parse_seed_ts(TEST_GENERAL_SEED)
+        self.data = mp.build_profile(self.old, self.general, NOW)
+        self.cats = {c["id"]: c for c in self.data["categories"]}
+
+    def test_parse_reads_groups_in_file_order_with_tag_modes(self):
+        self.assertEqual([g["name"] for g in self.old], ["食費", "交通", "生活", "特別", "給与", "一時収入"])
+        self.assertEqual(self.old[0]["children"], [("テスト自炊", "defaultDaily"), ("外食", "mustChoose"), ("テストおやつ", "defaultDaily")])
+        self.assertEqual(self.old[2]["children"][0], ("病院・薬", "none"))  # 複数行の書き方も読める
+        with self.assertRaises(ValueError):
+            mp.parse_seed_ts("何もない")
+
+    def test_output_is_a_valid_backup_with_profile_mark_and_empty_stores(self):
+        d = self.data
+        self.assertIsNone(cv.validate_backup(d))
+        self.assertEqual(d["profile"], {"label": mp.PROFILE_LABEL, "createdAt": NOW})
+        for store in mp.STORE_NAMES:
+            if store != "categories":
+                self.assertEqual(d[store], [], store)
+
+    def test_same_ids_as_the_old_seed_with_old_names_and_tag_modes(self):
+        c = self.cats["seed:expense:食費/外食"]
+        self.assertEqual((c["name"], c["tagMode"], c["hidden"], c["parentId"]), ("外食", "mustChoose", False, "seed:expense:食費"))
+        self.assertEqual(self.cats["seed:expense:生活/病院・薬"]["tagMode"], "none")
+        self.assertEqual(self.cats["seed:expense:食費"]["tagMode"], "none")  # 大分類はタグなし
+        # 本人の分類はすべて表示
+        for g in self.old:
+            for name, mode in g["children"]:
+                cc = self.cats[mp.seed_id(g["kind"], g["name"], name)]
+                self.assertEqual((cc["tagMode"], cc["hidden"]), (mode, False))
+
+    def test_updated_at_is_newer_than_the_seed_timestamp_so_it_overwrites_general_categories(self):
+        self.assertGreater(NOW, "2026-10-25T00:00:00.000Z")  # アプリの SEED_TIMESTAMP より新しい
+        for c in self.data["categories"]:
+            self.assertEqual((c["createdAt"], c["updatedAt"], c["deletedAt"]), (NOW, NOW, None))
+
+    def test_general_only_categories_are_hidden_not_deleted(self):
+        general_ids = set()
+        for g in self.general:
+            general_ids.add(mp.seed_id(g["kind"], g["name"]))
+            for name, _ in g["children"]:
+                general_ids.add(mp.seed_id(g["kind"], g["name"], name))
+        old_ids = {mp.seed_id(g["kind"], g["name"]) for g in self.old} | {mp.seed_id(g["kind"], g["name"], n) for g in self.old for n, _ in g["children"]}
+        only_general = general_ids - old_ids
+        self.assertEqual(only_general, {"seed:expense:食費/食料品", "seed:expense:日用品", "seed:expense:日用品/日用品", "seed:income:副業", "seed:income:副業/副業"})
+        for cid in only_general:
+            c = self.cats[cid]
+            self.assertTrue(c["hidden"], cid)
+            self.assertIsNone(c["deletedAt"])
+        # 両方にある分類は表示のまま、本人用の名前・タグの設定
+        for cid in general_ids & old_ids:
+            self.assertFalse(self.cats[cid]["hidden"], cid)
+        self.assertEqual(self.cats["seed:expense:食費/外食"]["tagMode"], "mustChoose")  # 一般向けの設定(日常)ではなく本人用
+        # 非表示の行は、同じ親の中で本人の分類と並び順が重ならない
+        siblings = [c for c in self.data["categories"] if c["parentId"] == "seed:expense:食費"]
+        self.assertEqual(sorted(c["order"] for c in siblings), list(range(len(siblings))))
+
+    def test_settings_are_the_personal_values_to_import(self):
+        s = self.data["settings"]
+        self.assertEqual((s["payday"], s["paydayHolidayShift"], s["defenseFund"]), (25, "before", 100000))
+        self.assertEqual((s["budgetMonthBoundary"], s["homeMainFigure"], s["weekStart"], s["backupReminderDays"]), ("payday", "remaining", "monday", 14))
+        self.assertIsNone(s["lastBackupAt"])
+
+    def test_script_has_no_personal_category_names(self):
+        # 本人の分類はタグ v0.8.0 の seedCategories.ts から読む。スクリプトの中に分類名の一覧を持たない
+        text = (HERE / "make_profile.py").read_text(encoding="utf-8")
+        self.assertNotIn('children: [["', text)
+        self.assertIn("git", text)
+
+    def test_cli_writes_file_from_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old = Path(tmp) / "old.ts"
+            gen = Path(tmp) / "gen.ts"
+            out = Path(tmp) / "sub" / "profile.json"
+            old.write_text(TEST_OLD_SEED, encoding="utf-8")
+            gen.write_text(TEST_GENERAL_SEED, encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = mp.main([str(out), "--seed-file", str(old), "--general-file", str(gen), "--now", NOW])
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(out.read_text(encoding="utf-8")), self.data)
+            # 読み取れないファイルは、何も書かずに終わる
+            bad = Path(tmp) / "bad.ts"
+            bad.write_text("なし", encoding="utf-8")
+            out2 = Path(tmp) / "none.json"
+            with contextlib.redirect_stderr(io.StringIO()):
+                code = mp.main([str(out2), "--seed-file", str(bad), "--general-file", str(gen)])
+            self.assertEqual(code, 2)
+            self.assertFalse(out2.exists())
+
+    def test_committed_sample_matches_the_script_and_the_current_general_seed(self):
+        # tests/profileImport.test.ts が読む見本。一般向けの初期分類を変えたら、作り直す：
+        #   python make_profile.py fixtures/profile.sample.json --seed-file fixtures/seed_old.sample.ts --now 2026-10-26T00:00:00.000Z
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "profile.json"
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = mp.main([str(out), "--seed-file", str(HERE / "fixtures" / "seed_old.sample.ts"), "--now", "2026-10-26T00:00:00.000Z"])
+            self.assertEqual(code, 0)
+            expected = json.loads(out.read_text(encoding="utf-8"))
+        committed = json.loads((HERE / "fixtures" / "profile.sample.json").read_text(encoding="utf-8"))
+        self.assertEqual(committed, expected)
 
 
 class TestHelpers(unittest.TestCase):

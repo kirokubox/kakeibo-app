@@ -8,7 +8,8 @@ import { KebabMenu } from "./KebabMenu";
 import { formatYen } from "./money";
 import { NumberSheet } from "./NumberSheet";
 import { PayrollLineRow, TakeHome, TargetPanel } from "./PayrollParts";
-import { PAYROLL_KINDS, PAYROLL_KIND_LABELS, blankLine, blankPayroll, moveLine, payrollTotals, validatePayroll } from "./payrollLogic";
+import { PREF_PAYROLL_INTRO, readPref, writePref } from "./localPrefs";
+import { PAYROLL_KINDS, PAYROLL_KIND_LABELS, SETTLEMENT_NOTE, addLineLabel, blankLine, blankPayroll, moveLine, payrollTotals, validatePayroll } from "./payrollLogic";
 import { payrollForecast } from "./scheduleLogic";
 import { getAll, newBase, newId, saveRecord, softDelete } from "./storage";
 import { useToast } from "./Toast";
@@ -100,7 +101,7 @@ export function PayrollTemplateView({ settings, today, onBack, onEnterMonth }: P
         {payrolls === null && !loadError && <p className="muted">読み込んでいます…</p>}
         {payrolls !== null && active.length === 0 && (
           <section className="card">
-            <p>給料明細のひな形はまだありません。右上の「追加」で、支給・控除・精算の行を組みます。毎月の明細は、ひな形から金額だけ直して入れます。</p>
+            <p>給料明細のひな形はまだありません。右上の「追加」で、支給・控除・天引きで払う後払いの行を組みます。毎月の明細は、ひな形から金額だけ直して入れます。</p>
           </section>
         )}
         {active.length > 0 && (
@@ -157,6 +158,8 @@ function PayrollEditor({ payroll: initial, isNew, accounts, categories, showToas
   const [saving, setSaving] = useState(false);
   const [initialJson] = useState(() => JSON.stringify(initial));
   const dirty = JSON.stringify(p) !== initialJson;
+  /** はじめて開いたときだけ出す短い説明（「わかった」で閉じて、二度と出さない。localStorage が使えなくても動く） */
+  const [intro, setIntro] = useState(() => readPref(PREF_PAYROLL_INTRO) !== "1");
 
   const patchLine = (lineId: Id, patch: Partial<PayrollLine>) => setP((cur) => ({ ...cur, lines: cur.lines.map((l) => (l.lineId === lineId ? ({ ...l, ...patch } as PayrollLine) : l)) }));
 
@@ -230,6 +233,34 @@ function PayrollEditor({ payroll: initial, isNew, accounts, categories, showToas
         {!isNew && <KebabMenu items={[{ label: "削除", onSelect: () => setSheet("delete"), danger: true }]} />}
       </header>
       <main className="payroll-body">
+        {intro && (
+          <section className="card payroll-intro" aria-label="給料明細の説明">
+            <ul className="intro-list">
+              <li>
+                <strong>支給</strong>＝もらう額（基本給・手当など）
+              </li>
+              <li>
+                <strong>控除</strong>＝税金・保険など、引かれる額
+              </li>
+              <li>
+                <strong>天引きで払う後払い</strong>＝社員証など、給料から引かれて払う分
+              </li>
+            </ul>
+            <p className="field-hint">支給 − 控除 − 天引きで払う後払い ＝ 手取り。手取りは画面の下に出ます。</p>
+            <div className="actions">
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => {
+                  writePref(PREF_PAYROLL_INTRO, "1");
+                  setIntro(false);
+                }}
+              >
+                わかった
+              </button>
+            </div>
+          </section>
+        )}
         <section className="card form">
           <label className="field">
             <span className="field-label">名前（明細の内容に入ります。例：テスト商事）</span>
@@ -262,9 +293,8 @@ function PayrollEditor({ payroll: initial, isNew, accounts, categories, showToas
           const lines = p.lines.filter((l) => l.kind === kind);
           return (
             <section key={kind} className="card list-card payroll-section">
-              <h2>
-                {PAYROLL_KIND_LABELS[kind]}の行{kind === "settlement" && "（社員証などの精算）"}
-              </h2>
+              <h2>{kind === "settlement" ? "天引きで払う後払いの行（社員証など）" : `${PAYROLL_KIND_LABELS[kind]}の行`}</h2>
+              {kind === "settlement" && <p className="field-hint list-intro">{SETTLEMENT_NOTE}</p>}
               {lines.length > 0 && (
                 <ul className="list">
                   {lines.map((l) => (
@@ -296,7 +326,7 @@ function PayrollEditor({ payroll: initial, isNew, accounts, categories, showToas
               )}
               <div className="payroll-add">
                 <button type="button" className="text-btn" onClick={() => addLine(kind)}>
-                  ＋ {PAYROLL_KIND_LABELS[kind]}の行を追加
+                  {addLineLabel(kind)}
                 </button>
               </div>
             </section>

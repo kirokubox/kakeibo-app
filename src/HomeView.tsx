@@ -16,6 +16,7 @@ import { isReviewDue } from "./subscriptionLogic";
 import { useToast } from "./Toast";
 import { TxRow } from "./TxRow";
 import { UsableCard } from "./UsableCard";
+import { WelcomeCard } from "./WelcomeCard";
 import type { Id, Settings, Transaction } from "./types";
 
 interface Props {
@@ -31,6 +32,10 @@ interface Props {
   onOpenPayroll: () => void;
   /** 明細タブへ */
   onGoEntries: () => void;
+  /** 資産タブへ（はじめに） */
+  onGoAssets: () => void;
+  /** 設定の分類（支出）を開く（はじめに） */
+  onGoCategories: () => void;
   /** 集計タブへ（サブスク見直しのお知らせ） */
   onGoSummary: () => void;
   onChanged: () => void;
@@ -39,7 +44,7 @@ interface Props {
 type Page = "home" | "reserves" | "outstanding";
 
 /** ホーム：今週あと◯円、給料日までに使える額、今月の予算、取り置き、お知らせ、最近の明細 */
-export function HomeView({ tabBar, today, version, settings, onOpenSettings, onAdd, onEdit, onOpenPayroll, onGoEntries, onGoSummary, onChanged }: Props) {
+export function HomeView({ tabBar, today, version, settings, onOpenSettings, onAdd, onEdit, onOpenPayroll, onGoEntries, onGoAssets, onGoCategories, onGoSummary, onChanged }: Props) {
   const [page, setPage] = useState<Page>("home");
   const [adjusting, setAdjusting] = useState<Transaction | null>(null);
   const [toast, showToast] = useToast();
@@ -115,6 +120,7 @@ export function HomeView({ tabBar, today, version, settings, onOpenSettings, onA
         {!summary && !error && <p className="muted small">データを準備しています…</p>}
         {summary && (
           <>
+            {summary.firstUse && <WelcomeCard onGoAssets={onGoAssets} onGoCategories={onGoCategories} onAdd={() => onAdd(today)} onOpenSettings={onOpenSettings} />}
             <WeekCard week={summary.week} bars={summary.week.bars} figure={settings.homeMainFigure} today={today} hasData={summary.hasTransactions} onRecalc={recalc("week")} />
             <UsableCard summary={summary} />
             <MonthCard month={summary.month} hasData={summary.hasTransactions} onRecalc={recalc("month")} onOpenPayroll={onOpenPayroll} />

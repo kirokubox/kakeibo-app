@@ -8,23 +8,26 @@ import { APP_VERSION, STORE_LABELS } from "./constants";
 import { formatDateTimeJa, todayKey } from "./dateUtils";
 import { downloadTextFile } from "./fileUtils";
 import { Icon } from "./Icon";
-import { indexExisting, planImport, recordsToWrite, sourceNote, totalsOf } from "./importPreview";
+import { defaultImportSettings, indexExisting, planImport, recordsToWrite, settingsAfterImport, sourceNote, totalsOf } from "./importPreview";
 import type { ImportPlan } from "./importPreview";
 import { resetSuggestIndex } from "./suggestStore";
 import { formatYen } from "./money";
 import { NumberSheet } from "./NumberSheet";
 import { PayrollEntryView } from "./PayrollEntryView";
 import { PayrollTemplateView } from "./PayrollTemplateView";
+import { FavoritesView } from "./FavoritesView";
 import { RecurringListView } from "./RecurringListView";
 import { validateDefenseFund, validatePayday, validateReminderDays } from "./settingsLogic";
 import { exportBackup, getAllData, requestPersistentStorage, writeImported } from "./storage";
 import type { PersistenceState } from "./storage";
 import { DATA_STORE_NAMES } from "./types";
 import { useToast } from "./Toast";
-import type { BackupFile, BackupSource, BudgetMonthBoundary, HolidayShift, HomeMainFigure, Settings } from "./types";
+import type { BackupFile, BackupSource, BudgetMonthBoundary, HolidayShift, HomeMainFigure, Settings, WeekStart } from "./types";
 
 interface Props {
   settings: Settings;
+  /** 開いたときに最初に出す分類の画面（ホームの「はじめに」から） */
+  initialCategoryPage?: "expense" | null;
   persistence: PersistenceState;
   onPersistenceChange: (state: PersistenceState) => void;
   onSettingsChange: (next: Settings) => Promise<void>;
@@ -40,12 +43,16 @@ interface Preview {
   source?: BackupSource;
 }
 
-type SettingSheet = "payday" | "shift" | "fund" | "boundary" | "figure" | "reminder";
+type SettingSheet = "payday" | "shift" | "fund" | "boundary" | "figure" | "reminder" | "weekStart";
 
 const SHIFT_OPTIONS: Array<{ value: HolidayShift; label: string }> = (["before", "after", "none"] as const).map((value) => ({ value, label: SHIFT_LABELS[value] }));
 const BOUNDARY_OPTIONS: Array<{ value: BudgetMonthBoundary; label: string; description: string }> = [
   { value: "payday", label: "給料日から次の給料日の前日まで", description: "給料日で区切って予算を決めます" },
   { value: "calendar", label: "暦月（1日〜末日）", description: "毎月1日から末日までで予算を決めます" },
+];
+const WEEK_START_OPTIONS: Array<{ value: WeekStart; label: string }> = [
+  { value: "monday", label: "月曜" },
+  { value: "sunday", label: "日曜" },
 ];
 const FIGURE_OPTIONS: Array<{ value: HomeMainFigure; label: string }> = [
   { value: "remaining", label: "今週あと◯円" },
@@ -76,16 +83,18 @@ const PERSISTENCE_TEXT: Record<PersistenceState, string> = {
   unsupported: "このブラウザでは確認できません",
 };
 
-export function SettingsView({ settings, persistence, onPersistenceChange, onSettingsChange, onClose }: Props) {
+export function SettingsView({ settings, initialCategoryPage = null, persistence, onPersistenceChange, onSettingsChange, onClose }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [doAdd, setDoAdd] = useState(true);
   const [doUpdate, setDoUpdate] = useState(true);
-  const [page, setPage] = useState<null | "expense" | "income">(null);
-  /** 入力の設定の下の画面：繰り返し・給料明細のひな形・給料明細を入れる */
-  const [inputPage, setInputPage] = useState<null | { page: "recurring" } | { page: "payroll" } | { page: "payrollEntry"; payrollId: string }>(null);
+  /** 「設定も読み込む」（今の設定を、ファイルの設定で置き換える）。本人用の初期データのときだけ、初期でオン */
+  const [doSettings, setDoSettings] = useState(false);
+  const [page, setPage] = useState<null | "expense" | "income">(initialCategoryPage);
+  /** 入力の設定の下の画面：繰り返し・よく使う入力・給料明細のひな形・給料明細を入れる */
+  const [inputPage, setInputPage] = useState<null | { page: "recurring" } | { page: "favorites" } | { page: "payroll" } | { page: "payrollEntry"; payrollId: string }>(null);
   const [sheet, setSheet] = useState<SettingSheet | null>(null);
   const [toast, showToast] = useToast();
 
@@ -129,6 +138,7 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
       setPreview({ fileName: file.name, exportedAt: result.backup.exportedAt, backup: result.backup, plan, source: result.backup.source });
       setDoAdd(true);
       setDoUpdate(true);
+      setDoSettings(defaultImportSettings(result.backup));
     } catch (error) {
       setMessage({ kind: "error", text: `読み込めませんでした（何も保存していません）：${error instanceof Error ? error.message : "不明なエラー"}` });
     } finally {
@@ -145,10 +155,13 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
       const records = recordsToWrite(preview.plan, { add: doAdd, update: doUpdate });
       await writeImported(records);
       resetSuggestIndex(); // 内容・メモの候補の集計は、次に使うとき作り直す
+      // 「設定も読み込む」：ファイルの設定で置き換える（lastBackupAt は今の端末の値を残す）
+      const nextSettings = settingsAfterImport(settings, preview.backup, doSettings);
+      if (nextSettings) await onSettingsChange(nextSettings);
       const t = totalsOf(preview.plan);
       const added = doAdd ? t.add : 0;
       const updated = doUpdate ? t.update : 0;
-      setMessage({ kind: "ok", text: `読み込みました：新しく足した ${added} 件、更新した ${updated} 件。` });
+      setMessage({ kind: "ok", text: `読み込みました：新しく足した ${added} 件、更新した ${updated} 件。${nextSettings ? "設定も読み込みました。" : ""}` });
       setPreview(null);
     } catch (error) {
       setMessage({ kind: "error", text: `保存できなかったため、何も書き込んでいません：${error instanceof Error ? error.message : "不明なエラー"}` });
@@ -162,11 +175,19 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
   };
 
   const totals = preview ? totalsOf(preview.plan) : null;
-  const nothingToWrite = totals !== null && (doAdd ? totals.add : 0) + (doUpdate ? totals.update : 0) === 0;
+  const nothingToWrite = totals !== null && !doSettings && (doAdd ? totals.add : 0) + (doUpdate ? totals.update : 0) === 0;
 
   if (page) return <CategoriesView initialKind={page} onBack={() => setPage(null)} />;
   const today = todayKey();
   if (inputPage?.page === "recurring") return <RecurringListView today={today} onBack={() => setInputPage(null)} />;
+  if (inputPage?.page === "favorites") {
+    return (
+      <>
+        <FavoritesView onClose={() => setInputPage(null)} showToast={showToast} />
+        {toast}
+      </>
+    );
+  }
   if (inputPage?.page === "payroll") {
     return (
       <>
@@ -246,6 +267,7 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
               <p className="muted small">
                 {preview.fileName}（{formatDateTimeJa(preview.exportedAt)} 保存）。まだ何も保存していません。
               </p>
+              {preview.backup.profile && <p className="source-note">本人用の初期データです（{preview.backup.profile.label}）</p>}
               {sourceNote(preview.source, preview.plan.transactions.total) && <p className="source-note">{sourceNote(preview.source, preview.plan.transactions.total)}</p>}
               <div className="table-scroll">
                 <table className="data-table">
@@ -283,7 +305,7 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
                 </table>
               </div>
               <p className="muted small">
-                「飛ばす」は、同じものが同じ状態で入っている、または今のデータの方が新しいもの。設定は上書きしません。
+                「飛ばす」は、同じものが同じ状態で入っている、または今のデータの方が新しいもの。設定は、下の「設定も読み込む」をオンにしたときだけ置き換えます。
               </p>
               <label className="check">
                 <input type="checkbox" checked={doAdd} onChange={(e) => setDoAdd(e.target.checked)} />
@@ -292,6 +314,10 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
               <label className="check">
                 <input type="checkbox" checked={doUpdate} onChange={(e) => setDoUpdate(e.target.checked)} />
                 同じものは、新しい方で更新する（{totals.update.toLocaleString("ja-JP")} 件）
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={doSettings} onChange={(e) => setDoSettings(e.target.checked)} />
+                設定も読み込む（今の設定を、ファイルの設定で置き換えます）
               </label>
               <div className="actions">
                 <button type="button" className="primary-btn" disabled={busy || nothingToWrite} onClick={handleApply}>
@@ -305,7 +331,7 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
           )}
         </section>
 
-        <AiExportCard />
+        <AiExportCard weekStart={settings.weekStart} />
 
         <section className="card">
           <h2>データの保護</h2>
@@ -340,9 +366,10 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
           <h2>入力</h2>
           <div className="setting-list">
             <SettingRow label="繰り返し" value="" onClick={() => setInputPage({ page: "recurring" })} />
+            <SettingRow label="よく使う入力" value="" onClick={() => setInputPage({ page: "favorites" })} />
             <SettingRow label="給料明細" value="" onClick={() => setInputPage({ page: "payroll" })} />
           </div>
-          <p className="muted small">固定費や定期の振替は「繰り返し」で自動に。給料は明細1枚分をまとめて入れます。</p>
+          <p className="muted small">家賃やサブスクなどの定期の支払い・定期の振替は「繰り返し」で自動に。給料は明細1枚分をまとめて入れます。</p>
         </section>
 
         <section className="card">
@@ -360,7 +387,7 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
           <h2>表示</h2>
           <div className="setting-list">
             <SettingRow label="ホームの一番大きい数字" value={settings.homeMainFigure === "remaining" ? "今週あと◯円" : "今週使った額"} onClick={() => setSheet("figure")} />
-            <SettingRow label="週の始まり" value="月曜" />
+            <SettingRow label="週の始まり" value={settings.weekStart === "sunday" ? "日曜" : "月曜"} onClick={() => setSheet("weekStart")} />
           </div>
         </section>
 
@@ -394,6 +421,17 @@ export function SettingsView({ settings, persistence, onPersistenceChange, onSet
           value={settings.budgetMonthBoundary}
           onSelect={(v) => {
             if (v !== settings.budgetMonthBoundary) void change({ budgetMonthBoundary: v }, "次の区切りから新しい区切りで予算を決めます。これまでの予算の記録は変わりません");
+          }}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet === "weekStart" && (
+        <ChoiceSheet
+          title="週の始まり"
+          options={WEEK_START_OPTIONS}
+          value={settings.weekStart}
+          onSelect={(v) => {
+            if (v !== settings.weekStart) void change({ weekStart: v }, "次の週から新しい始まりで予算を決めます。今週の予算とこれまでの記録は変わりません");
           }}
           onClose={() => setSheet(null)}
         />

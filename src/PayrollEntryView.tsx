@@ -8,6 +8,7 @@ import { PayrollLineRow, TakeHome, TargetPanel } from "./PayrollParts";
 import {
   PAYROLL_KINDS,
   PAYROLL_KIND_LABELS,
+  SETTLEMENT_NOTE,
   batchTransactions,
   entryDraftFromBatch,
   newEntryDraft,
@@ -234,10 +235,8 @@ export function PayrollEntryView({ payrollId, batchId, today, showToast, onClose
 
         {sections.map(({ kind, lines }) => (
           <section key={kind} className="card list-card payroll-section">
-            <h2>
-              {PAYROLL_KIND_LABELS[kind]}
-              {kind === "settlement" && "（社員証などの精算。支出にはしません）"}
-            </h2>
+            <h2>{PAYROLL_KIND_LABELS[kind]}</h2>
+            {kind === "settlement" && <p className="field-hint list-intro">{SETTLEMENT_NOTE}</p>}
             {lines.length === 0 ? (
               <p className="muted small" style={{ padding: "0 var(--kb-space-4)" }}>
                 行はありません

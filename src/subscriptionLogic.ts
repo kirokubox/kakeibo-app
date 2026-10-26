@@ -1,5 +1,5 @@
 // サブスク見直しのロジック（画面から切り離した純粋なロジック）。
-// 対象：固定費＞サブスクの支出。内容ごとにまとめ、3か月に1回「続ける／やめる」を記録する。
+// 対象：サブスクの分類（サブスク＞サブスク。v0.8.0 までの固定費＞サブスクも）の支出。内容ごとにまとめ、3か月に1回「続ける／やめる」を記録する。
 import { daysBetween } from "./budgetLogic.js";
 import { toDateKey } from "./dateUtils.js";
 import { addMonths } from "./periodLogic.js";
@@ -7,8 +7,13 @@ import { seedCategoryId } from "./seedCategories.js";
 import { normalizeText } from "./searchLogic.js";
 import type { Base, SubscriptionDecision, SubscriptionReview, Transaction } from "./types.js";
 
-/** 初期分類「固定費＞サブスク」のID。本人が名前を変えても同じIDで判定する */
-export const SUBSCRIPTION_CATEGORY_ID = seedCategoryId("expense", "固定費", "サブスク");
+/** 初期分類「サブスク＞サブスク」のID（一般向けの初期分類）。本人が名前を変えても同じIDで判定する */
+export const SUBSCRIPTION_CATEGORY_ID = seedCategoryId("expense", "サブスク", "サブスク");
+/**
+ * サブスクとみなす分類のID。一般向けの初期分類のほかに、v0.8.0 までの初期分類（固定費＞サブスク）のIDも数える
+ * （すでにその分類で記録している端末と、本人用の初期データを読み込んだ端末のため）。
+ */
+export const SUBSCRIPTION_CATEGORY_IDS: readonly string[] = [SUBSCRIPTION_CATEGORY_ID, seedCategoryId("expense", "固定費", "サブスク")];
 /** 最後の見直しから、お知らせまでの日数 */
 export const REVIEW_INTERVAL_DAYS = 90;
 
@@ -31,7 +36,7 @@ export interface SubscriptionSummary {
 }
 
 function isSubscriptionTx(t: Transaction): boolean {
-  return t.deletedAt === null && t.type === "expense" && t.categoryId === SUBSCRIPTION_CATEGORY_ID;
+  return t.deletedAt === null && t.type === "expense" && t.categoryId !== undefined && SUBSCRIPTION_CATEGORY_IDS.includes(t.categoryId);
 }
 
 function byDateAsc(a: Transaction, b: Transaction): number {
@@ -47,7 +52,7 @@ function isMonthly(dates: readonly string[]): boolean {
   return true;
 }
 
-/** 固定費＞サブスクの明細を内容ごとにまとめる。最後に払った日が新しい順 */
+/** サブスクの分類の明細を内容ごとにまとめる。最後に払った日が新しい順 */
 export function summarizeSubscriptions(txs: readonly Transaction[]): SubscriptionSummary[] {
   const groups = new Map<string, Transaction[]>();
   for (const t of txs) {

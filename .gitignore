@@ -31,3 +31,6 @@ tools/convert-mmbak/output/
 tools/convert-mmbak/__pycache__/
 !tools/convert-mmbak/fixtures/
 !tools/convert-mmbak/fixtures/**
+
+# 本人用の初期データ（make_profile.py の出力。個人データ）
+kakeibo-profile-*.json

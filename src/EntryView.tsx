@@ -53,6 +53,7 @@ import {
   validateRepeat,
 } from "./recurrence";
 import type { RepeatDraft } from "./recurrence";
+import { generateDueRecurrings } from "./recurringStore";
 import { getAll, newBase, saveRecord, saveRecords, saveStores, softDelete } from "./storage";
 import { getSuggestIndex, noteTransactionChanged } from "./suggestStore";
 import { currentWord, lastUsageOf, replaceCurrentWord, suggestContents, suggestMemoWords } from "./suggestLogic";
@@ -91,7 +92,31 @@ export type EntryMode =
   | { kind: "edit"; tx: Transaction }
   | { kind: "copy"; tx: Transaction; today: string }
   /** 繰り返しの編集（設定の「繰り返し」から）。保存すると、これから作る分だけが変わる */
-  | { kind: "recurring"; rec: Recurring };
+  | { kind: "recurring"; rec: Recurring }
+  /** 繰り返しの追加（設定の「繰り返し」の右上の「追加」から）。日付の行は「開始日」（初期値は今日）。保存しても1回目の明細は作らない */
+  | { kind: "recurringNew" }
+  /** よく使う入力の追加（よく使う入力の一覧の右上の「追加」から）。日付・繰り返しの行はない */
+  | { kind: "favoriteNew" }
+  /** よく使う入力のひな形の編集（一覧の︙の「編集」から） */
+  | { kind: "favoriteEdit"; fav: Favorite };
+
+/** 画面を作り直す目印（別の対象を開いたとき、入力中の状態を持ち越さない） */
+export function entryKey(mode: EntryMode): string {
+  switch (mode.kind) {
+    case "new":
+      return `new-${mode.date}-${mode.transfer ? "t" : ""}-${mode.prefill?.content ?? ""}-${mode.prefill?.amount ?? ""}`;
+    case "recurring":
+      return `rec-${mode.rec.id}`;
+    case "recurringNew":
+      return "rec-new";
+    case "favoriteNew":
+      return "fav-new";
+    case "favoriteEdit":
+      return `fav-${mode.fav.id}`;
+    default:
+      return `${mode.kind}-${mode.tx.id}`;
+  }
+}
 
 interface Props {
   mode: EntryMode;
@@ -122,11 +147,14 @@ interface FormState {
 
 const NO_BASE = { id: "", createdAt: "", updatedAt: "", deletedAt: null };
 
-function initialState(mode: EntryMode): FormState {
-  if (mode.kind === "recurring") {
-    // 繰り返しのひな形を、普通の入力と同じ形の下書きにして開く
-    const t = templateAsTransaction(mode.rec.template, mode.rec.startDate, NO_BASE);
-    const date = mode.rec.startDate;
+function initialState(mode: EntryMode, today: string): FormState {
+  if (mode.kind === "recurringNew" || mode.kind === "favoriteNew") {
+    return { isTransfer: false, draft: emptyDraft("expense", today), tdraft: emptyTransferDraft(today), reimb: null, settlesTxId: null };
+  }
+  if (mode.kind === "recurring" || mode.kind === "favoriteEdit") {
+    // 繰り返し・よく使う入力のひな形を、普通の入力と同じ形の下書きにして開く
+    const date = mode.kind === "recurring" ? mode.rec.startDate : today;
+    const t = templateAsTransaction(mode.kind === "recurring" ? mode.rec.template : mode.fav.template, date, NO_BASE);
     if (t.type === "transfer") {
       return { isTransfer: true, draft: emptyDraft("expense", date), tdraft: transferFromTransaction(t) ?? emptyTransferDraft(date), reimb: null, settlesTxId: null };
     }
@@ -169,7 +197,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
   const [categories, setCategories] = useState<Category[]>([]);
   const [index, setIndex] = useState<SuggestIndex | null>(null);
   const [existing, setExisting] = useState<Transaction | undefined>(mode.kind === "edit" ? mode.tx : undefined);
-  const [init] = useState(() => initialState(mode));
+  const [init] = useState(() => initialState(mode, today));
   const [isTransfer, setIsTransfer] = useState(init.isTransfer);
   const [draft, setDraft] = useState<EntryDraft>(init.draft);
   const [tdraft, setTdraft] = useState<TransferDraft>(init.tdraft);
@@ -183,8 +211,15 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
   const [reserveMoves, setReserveMoves] = useState<ReserveMove[]>([]);
   const [initialJson, setInitialJson] = useState(() => JSON.stringify(init));
   const isRecMode = mode.kind === "recurring";
-  const [repeat, setRepeat] = useState<RepeatDraft | null>(() => (mode.kind === "recurring" ? recurringToRepeat(mode.rec) : null));
-  const [initialRepeatJson, setInitialRepeatJson] = useState(() => JSON.stringify(mode.kind === "recurring" ? recurringToRepeat(mode.rec) : null));
+  /** 繰り返しの追加（開始日の行と、繰り返しの設定のカードを出す） */
+  const isRecNew = mode.kind === "recurringNew";
+  /** 繰り返しの設定のカードを出す画面（編集・追加） */
+  const isRecLike = isRecMode || isRecNew;
+  /** よく使う入力のひな形の追加・編集（日付・繰り返しの行はない） */
+  const isFavMode = mode.kind === "favoriteNew" || mode.kind === "favoriteEdit";
+  const initialRepeat = (): RepeatDraft | null => (mode.kind === "recurring" ? recurringToRepeat(mode.rec) : mode.kind === "recurringNew" ? defaultRepeat(today) : null);
+  const [repeat, setRepeat] = useState<RepeatDraft | null>(initialRepeat);
+  const [initialRepeatJson, setInitialRepeatJson] = useState(() => JSON.stringify(initialRepeat()));
   /** 見込みの明細を開いたときの「実額にした」のチェック */
   const [actual, setActual] = useState(false);
   const [panel, setPanel] = useState<Panel>(null);
@@ -205,7 +240,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
   const rowRefs = useRef<Record<string, HTMLElement | null>>({});
   const shakeTimer = useRef<number | undefined>(undefined);
 
-  const source = isRecMode ? "recurring" : (existing?.source ?? "manual");
+  const source = isRecLike ? "recurring" : (existing?.source ?? "manual");
   const isEdit = existing !== undefined;
 
   // 資産・分類・候補の集計を読む
@@ -219,7 +254,9 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
         setCategories(c);
         setReserves(rs);
         setReserveMoves(rm);
-        if (mode.kind === "new") {
+        if (mode.kind === "recurringNew" || mode.kind === "favoriteNew") {
+          setPanel("account");
+        } else if (mode.kind === "new") {
           // 新規で開いたら、すぐ資産のパネル。カードの引き落としなどで用意された振替は、そのフォーカスへ
           const focus = mode.transfer?.focus;
           if (focus === "amount") {
@@ -327,7 +364,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
     () => openReserves.concat(reserves.filter((r) => r.deletedAt === null && !!r.closedAt && r.id === reserveId)),
     [openReserves, reserves, reserveId],
   );
-  const reserveRow = !isTransfer && !isRecMode && draft.type === "expense" && (openReserves.length > 0 || reserveId !== null);
+  const reserveRow = !isTransfer && !isRecLike && !isFavMode && draft.type === "expense" && (openReserves.length > 0 || reserveId !== null);
   const selectedReserve = reserveId ? reserves.find((r) => r.id === reserveId) : undefined;
   const reserveAvailable = reserveId ? balanceOf(reserveId, reserveMoves, existing?.id) : 0;
   const reserveOver = reserveRow && reserveId && draft.amount !== null ? overflowOf(netPayAmount(draft.amount, reimb), reserveAvailable) : 0;
@@ -535,8 +572,38 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
     }
   };
 
+  /** よく使う入力のひな形を保存する（追加・編集）。必須の項目はない（呼び出したときに足りない項目を選び直す） */
+  const saveFavorite = async () => {
+    const { d, t } = commitPad();
+    const empty = isTransfer
+      ? !t.fromId && !t.toId && t.amount === null && t.content.trim() === ""
+      : !d.accountId && !d.categoryId && d.amount === null && d.content.trim() === "";
+    if (empty) {
+      showToast("先に内容を入れてください");
+      return;
+    }
+    setSaving(true);
+    try {
+      const template = isTransfer ? transferToTemplate(t) : draftToTemplate(d);
+      const rec: Favorite =
+        mode.kind === "favoriteEdit" ? { ...mode.fav, template } : { ...newBase(), template, order: nextFavoriteOrder(await getAll("favorites")) };
+      await saveRecord("favorites", rec);
+      onChanged();
+      showToast(mode.kind === "favoriteEdit" ? "よく使う入力を更新しました" : "よく使う入力を追加しました");
+      onClose();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "保存できませんでした");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const save = async (andContinue: boolean) => {
     if (saving) return;
+    if (isFavMode) {
+      await saveFavorite();
+      return;
+    }
     const { d, t } = commitPad();
     let record: Transaction;
     if (isTransfer) {
@@ -581,6 +648,20 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
         await saveRecord("recurrings", applyRepeatEdit(mode.rec, repeat ?? recurringToRepeat(mode.rec), template));
         onChanged();
         showToast("繰り返しを更新しました");
+        onClose();
+        return;
+      }
+      if (mode.kind === "recurringNew") {
+        // 繰り返しの追加：1回目の明細は作らない。開始日が今日以前なら、今日までの分を自動作成の仕組みで入れる
+        await saveRecord("recurrings", buildRecurring(repeat ?? defaultRepeat(record.date), template, record.date, newBase(), false));
+        let made = 0;
+        try {
+          made = await generateDueRecurrings(today);
+        } catch {
+          // 作れなかったときは、次に開いたときにもう一度試す
+        }
+        onChanged();
+        showToast(made > 0 ? `繰り返しを追加しました（今日までの明細を${made}件入れました）` : "繰り返しを追加しました");
         onClose();
         return;
       }
@@ -752,7 +833,9 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
     }
   };
 
-  const menu = isRecMode
+  const menu = isFavMode || isRecNew
+    ? []
+    : isRecMode
     ? [
         { label: "終わりにする", onSelect: () => void endRepeatNow() },
         { label: "削除", onSelect: () => setSheet("deleteRec"), danger: true },
@@ -799,7 +882,16 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
 
   // ---- 表示 ----
 
-  const title = isRecMode ? "繰り返しを編集" : `${isTransfer ? "振替" : TYPE_LABELS[draft.type]}${isEdit ? "を編集" : ""}`;
+  const title =
+    mode.kind === "recurring"
+      ? "繰り返しを編集"
+      : mode.kind === "recurringNew"
+        ? "繰り返しを追加"
+        : mode.kind === "favoriteNew"
+          ? "よく使う入力を追加"
+          : mode.kind === "favoriteEdit"
+            ? "よく使う入力を編集"
+            : `${isTransfer ? "振替" : TYPE_LABELS[draft.type]}${isEdit ? "を編集" : ""}`;
   const amountText =
     panel === "amount" ? (pad.expr === "" ? "" : formatExpr(pad.expr)) : curAmount === null ? "" : curAmount.toLocaleString("ja-JP");
   const feeNow = feeOf(tdraft);
@@ -815,7 +907,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
 
   if (sheet === "favorites") {
     return (
-      <FavoritesView accounts={accountList} categories={categories} onPick={recall} onClose={() => setSheet(null)} showToast={showToast} />
+      <FavoritesView onPick={recall} onClose={() => setSheet(null)} showToast={showToast} />
     );
   }
 
@@ -836,10 +928,12 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
           <Icon name="chevron-left" size={22} />
         </button>
         <h1 className="topbar-title">{title}</h1>
-        <button type="button" className="icon-btn" aria-label="よく使う入力" onClick={() => setSheet("favorites")}>
-          <Icon name="star" size={22} />
-        </button>
-        <KebabMenu items={menu} />
+        {!isFavMode && (
+          <button type="button" className="icon-btn" aria-label="よく使う入力" onClick={() => setSheet("favorites")}>
+            <Icon name="star" size={22} />
+          </button>
+        )}
+        {menu.length > 0 && <KebabMenu items={menu} />}
       </header>
 
       <main className="entry-body">
@@ -891,16 +985,16 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
               </div>
             )}
 
-            {mode.kind === "recurring" && repeat && (
+            {(mode.kind === "recurring" || mode.kind === "recurringNew") && repeat && (
               <section className="repeat-card" aria-label="繰り返しの設定">
-                <RepeatFields value={repeat} onChange={setRepeat} anchorDate={mode.rec.startDate} />
+                <RepeatFields value={repeat} onChange={setRepeat} anchorDate={mode.kind === "recurring" ? mode.rec.startDate : curDate} />
               </section>
             )}
 
             <section className="entry-rows">
-              {!isRecMode && (
+              {!isRecMode && !isFavMode && (
               <div className="entry-row">
-                <span className="entry-label">日付</span>
+                <span className="entry-label">{isRecNew ? "開始日" : "日付"}</span>
                 <label className="entry-value date-label">
                   {isLocalDate(curDate) ? formatDateJa(curDate) : curDate}
                   <input
@@ -919,7 +1013,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
                     }}
                   />
                 </label>
-                {!existing?.recurringId && (
+                {!existing?.recurringId && !isRecNew && (
                   <button type="button" className={`text-btn repeat-btn${repeat ? " on" : ""}`} onClick={() => setSheet("repeat")}>
                     {repeat ? repeatLabel(repeat) : "繰り返し"}
                   </button>
@@ -1212,7 +1306,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
 
       {panel === null && (
         <footer className="entry-footer">
-          {!isRecMode && (
+          {!isRecLike && !isFavMode && (
             <button type="button" className="secondary-btn" disabled={saving} onClick={() => void save(true)}>
               続ける
             </button>

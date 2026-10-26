@@ -12,16 +12,41 @@ const reason = (v: unknown): string => {
   return r.ok ? "" : r.reason;
 };
 
-test("初期設定の値（給料日25・前の平日・生活防衛資金100,000円・月の区切り＝給料日・今週あと◯円・月曜）", () => {
+test("初期設定の値（一般向け：給料日25・前の平日・生活防衛資金0円・月の区切り＝給料日・今週あと◯円・月曜・お知らせ14日）", () => {
   const s = defaultSettings();
   assert.equal(s.payday, 25);
   assert.equal(s.paydayHolidayShift, "before");
-  assert.equal(s.defenseFund, 100000);
+  assert.equal(s.defenseFund, 0);
   assert.equal(s.budgetMonthBoundary, "payday");
   assert.equal(s.homeMainFigure, "remaining");
   assert.equal(s.weekStart, "monday");
-  assert.ok(s.backupReminderDays > 0);
+  assert.equal(s.backupReminderDays, 14);
   assert.equal(s.lastBackupAt, null);
+});
+
+test("週の始まり：monday と sunday を読める。ほかの値は拒否", () => {
+  const ok = JSON.parse(JSON.stringify(sampleBackup())) as Any;
+  ok.settings.weekStart = "sunday";
+  assert.equal(validateBackup(ok).ok, true);
+  ok.settings.weekStart = "monday";
+  assert.equal(validateBackup(ok).ok, true);
+  ok.settings.weekStart = "tuesday";
+  assert.match(reason(ok), /weekStart/);
+});
+
+test("本人用の初期データの印（profile）は任意。あれば label が文字列、createdAt が時刻つきの日時", () => {
+  const b = JSON.parse(JSON.stringify(sampleBackup())) as Any;
+  assert.equal(validateBackup(b).ok, true);
+  b.profile = { label: "本人用の初期データ", createdAt: "2026-10-26T00:00:00.000Z" };
+  const r = validateBackup(b);
+  assert.equal(r.ok, true);
+  if (r.ok) assert.equal(r.backup.profile?.label, "本人用の初期データ");
+  b.profile = { label: 1, createdAt: "2026-10-26T00:00:00.000Z" };
+  assert.match(reason(b), /profile\.label/);
+  b.profile = { label: "x", createdAt: "昨日" };
+  assert.match(reason(b), /profile\.createdAt/);
+  b.profile = "x";
+  assert.match(reason(b), /profile/);
 });
 
 test("ファイル名は kakeibo-backup-YYYY-MM-DD.json", () => {

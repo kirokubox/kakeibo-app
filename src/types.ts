@@ -179,15 +179,16 @@ export interface SubscriptionReview extends Base {
 }
 
 export type BudgetMonthBoundary = "payday" | "calendar";
+export type WeekStart = "monday" | "sunday";
 export type HomeMainFigure = "remaining" | "spent";
 /** 設定。1端末に1つだけ持つ（IndexedDB の settings ストア、キー "app"）。バックアップには入るが、追加インポートでは上書きしない */
 export interface Settings {
   payday: number; // 初期値 25
   paydayHolidayShift: HolidayShift; // 初期値 'before'
-  defenseFund: number; // 初期値 100000
+  defenseFund: number; // 初期値 0（一般向け。本人用の値は本人用の初期データで入れる）
   budgetMonthBoundary: BudgetMonthBoundary; // 初期値 'payday'
   homeMainFigure: HomeMainFigure; // 初期値 'remaining'
-  weekStart: "monday";
+  weekStart: WeekStart; // 初期値 'monday'。週の予算・ホームの週・明細の週別・カレンダー・集計の週に効く
   backupReminderDays: number; // 最後のバックアップから何日で知らせるか
   lastBackupAt: string | null;
 }
@@ -220,6 +221,12 @@ export interface BackupSource {
   importFrom?: string;
 }
 
+/** 本人用の初期データ（make_profile.py で作るファイル）が付ける印。あると追加インポートの「設定も読み込む」が初期でオンになる */
+export interface BackupProfile {
+  label: string;
+  createdAt: string;
+}
+
 /** バックアップファイル（schemaVersion 1）。論理削除したものも含む */
 export interface BackupFile extends DataSet {
   app: "kakeibo-app";
@@ -228,4 +235,6 @@ export interface BackupFile extends DataSet {
   settings: Settings;
   /** 変換スクリプトで作ったファイルだけが持つ */
   source?: BackupSource;
+  /** 本人用の初期データだけが持つ */
+  profile?: BackupProfile;
 }

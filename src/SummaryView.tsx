@@ -35,11 +35,13 @@ import {
 } from "./summaryLogic";
 import type { CategoryRow, SummaryPeriod, SummaryPeriodKind, TagKey } from "./summaryLogic";
 import { useToast } from "./Toast";
-import type { CategoryKind, Id, Transaction } from "./types";
+import type { CategoryKind, Id, Transaction, WeekStart } from "./types";
 
 interface Props {
   tabBar: ReactNode;
   today: string;
+  /** 週の始まり（設定）。集計の「週」に使う */
+  weekStart: WeekStart;
   /** 保存・削除などで増える。変わったら読み直す */
   version: number;
   onOpenSettings: () => void;
@@ -67,16 +69,16 @@ interface DrillStep {
 }
 
 /** 集計タブ：開閉なしで縦に並べる（キロクカレンダーと同じ考え方） */
-export function SummaryView({ tabBar, today, version, onOpenSettings, onEdit, onChanged }: Props) {
+export function SummaryView({ tabBar, today, weekStart, version, onOpenSettings, onEdit, onChanged }: Props) {
   const { data, error } = useAllData(version);
-  const [period, setPeriod] = useState<SummaryPeriod>(() => periodAround("month", today));
+  const [period, setPeriod] = useState<SummaryPeriod>(() => periodAround("month", today, undefined, weekStart));
   const [kind, setKind] = useState<CategoryKind>("expense");
   const [path, setPath] = useState<DrillStep[]>([]);
   const [assetSel, setAssetSel] = useState<Id[]>([]);
   const [adjusting, setAdjusting] = useState<Transaction | null>(null);
   const [toast, showToast] = useToast();
 
-  const range = summaryRange(period);
+  const range = summaryRange(period, weekStart);
   const endMonth = today.slice(0, 7);
   const txs = data?.transactions;
   const categories = data?.categories;
@@ -88,13 +90,13 @@ export function SummaryView({ tabBar, today, version, onOpenSettings, onEdit, on
   const breakdown = useMemo(() => (txs && categories ? categoryBreakdown(txs, categories, kind, range, applied) : null), [txs, categories, kind, range.start, range.end, applied]); // eslint-disable-line react-hooks/exhaustive-deps
   const tags = useMemo(() => (txs ? tagBreakdown(txs, range) : null), [txs, range.start, range.end]); // eslint-disable-line react-hooks/exhaustive-deps
   const tagMonths = useMemo(() => (txs ? tagTrend(txs, endMonth) : []), [txs, endMonth]);
-  const weekBars = useMemo(() => (txs && data ? weekBudgetBars(data.budgetSnapshots, txs, today, spend) : []), [txs, data, today, spend]);
+  const weekBars = useMemo(() => (txs && data ? weekBudgetBars(data.budgetSnapshots, txs, today, spend, 12, weekStart) : []), [txs, data, today, spend, weekStart]);
   const monthBars = useMemo(() => (txs && data ? monthBudgetBars(data.budgetSnapshots, txs, today, spend) : []), [txs, data, today, spend]);
   const incomeExpense = useMemo(() => (txs ? incomeExpenseTrend(txs, endMonth, 12, applied) : []), [txs, endMonth, applied]);
   const assets = useMemo(() => (txs && data ? assetTrend(data.accounts, txs, endMonth) : null), [txs, data, endMonth]);
   const adjust = useMemo(() => (txs && data ? adjustmentStats(txs, data.accounts, range) : null), [txs, data, range.start, range.end]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const changeKind = (k: SummaryPeriodKind) => setPeriod((p) => periodAround(k, switchDay(p, today), p));
+  const changeKind = (k: SummaryPeriodKind) => setPeriod((p) => periodAround(k, switchDay(p, today, weekStart), p, weekStart));
   const shift = (n: number) => setPeriod((p) => shiftSummaryPeriod(p, n));
 
   const title = (() => {

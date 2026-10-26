@@ -76,6 +76,8 @@
     "tests/subscriptionLogic.test.ts",
     "tests/aiMarkdown.test.ts",
     "tests/reconcileLogic.test.ts",
-    "tests/csvImport.test.ts"
+    "tests/csvImport.test.ts",
+    "tests/weekStart.test.ts",
+    "tests/profileImport.test.ts"
   ]
 }

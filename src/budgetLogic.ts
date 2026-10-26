@@ -5,13 +5,14 @@ import { computeBalances, summarizeAccounts } from "./accountLogic.js";
 import { nextPayday, paydayOf } from "./businessDay.js";
 import { addDays, addMonths, daysInMonth, isLocalDate, toDateKey } from "./dateUtils.js";
 import { plannedCommitted, plannedStatuses } from "./plannedLogic.js";
-import { countedExpense, inRange, monthRange, weekStartOf } from "./periodLogic.js";
+import { countedExpense, inRange, monthRange, weekRange } from "./periodLogic.js";
 import { reserveBalances, spendByTx, totalReserveBalance } from "./reserveLogic.js";
 import { paydaysBetween, recurringOccurrencesBetween } from "./scheduleLogic.js";
-import type { Account, Base, BudgetSnapshot, Category, DataSet, HolidayShift, Id, Recurring, Settings, Transaction, TransactionTemplate } from "./types.js";
+import type { Account, Base, BudgetSnapshot, Category, DataSet, HolidayShift, Id, Recurring, Settings, Transaction, TransactionTemplate, WeekStart } from "./types.js";
 
 export type BudgetData = Pick<DataSet, "accounts" | "categories" | "transactions" | "recurrings" | "reserves" | "reserveMoves" | "plannedExpenses">;
-export type BudgetSettings = Pick<Settings, "payday" | "paydayHolidayShift" | "defenseFund" | "budgetMonthBoundary">;
+/** weekStart は省略すると月曜始まり */
+export type BudgetSettings = Pick<Settings, "payday" | "paydayHolidayShift" | "defenseFund" | "budgetMonthBoundary"> & { weekStart?: WeekStart };
 type PaydaySettings = { payday: number; paydayHolidayShift: HolidayShift };
 
 export interface DateSpan {
@@ -52,6 +53,40 @@ export function paydayPeriodOf(date: string, s: PaydaySettings): DateSpan {
 /** 今日を含めて、次の給料日の前日までの日数（残り日数） */
 export function daysLeftUntilPayday(today: string, s: PaydaySettings): number {
   return daysBetween(today, nextPaydayAfter(today, s));
+}
+
+// ---- 週 ----
+
+/** 週の予算の記録（論理削除済みは除く） */
+function weekSnapshots(snapshots: readonly BudgetSnapshot[]): BudgetSnapshot[] {
+  return snapshots.filter((b) => b.deletedAt === null && b.period === "week").sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+}
+
+/** その日を含む週の予算の記録（なければ undefined） */
+export function findWeekContaining(snapshots: readonly BudgetSnapshot[], date: string): BudgetSnapshot | undefined {
+  return weekSnapshots(snapshots).find((b) => b.start <= date && date <= b.end);
+}
+
+/**
+ * 今日の週の期間（予算を決める単位）。
+ *  ・今日を含む予算の記録があれば、その記録の期間（週の始まりを切り替えても、今週の予算は残す）
+ *  ・なければ、設定の週の始まりで数えた週。ただし、すでに決めた週の終わりより前には広げない
+ *    （週の始まりを切り替えた直後にできる短い週は、その残りの日数だけになる）
+ */
+export function weekSpanOf(today: string, s: { weekStart?: WeekStart }, snapshots: readonly BudgetSnapshot[]): DateSpan {
+  const containing = findWeekContaining(snapshots, today);
+  if (containing) return { start: containing.start, end: containing.end };
+  const natural = weekRange(today, s.weekStart ?? "monday");
+  let start = natural.start;
+  for (const b of weekSnapshots(snapshots)) {
+    if (b.end < today && b.end >= start) start = addDays(b.end, 1);
+  }
+  return { start, end: natural.end };
+}
+
+/** 期間の日数（初日と最終日を含む） */
+function spanDays(span: DateSpan): number {
+  return daysBetween(span.start, span.end) + 1;
 }
 
 // ---- 変動費 ----
@@ -268,18 +303,21 @@ export interface BudgetPlan {
   basis: Record<string, number>;
 }
 
-/** 週の予算：月曜の時点の1日あたり × その週のうち次の給料日の前日までの日数（最大7）。給料日からの分は tail で足す */
-export function weekBudgetPlan(data: BudgetData, s: BudgetSettings, monday: string): BudgetPlan {
-  const r = calcUsable(data, s, monday, { asOf: true });
-  const headDays = Math.min(7, r.days);
+/**
+ * 週の予算：週の初日の時点の1日あたり × その週のうち次の給料日の前日までの日数（最大でその週の日数。通常7日）。
+ * 給料日からの分は tail で足す。end を渡さなければ初日から7日間。週の始まりを切り替えた直後の短い週は、end でその残りの日数にする。
+ */
+export function weekBudgetPlan(data: BudgetData, s: BudgetSettings, first: string, end: string = addDays(first, 6)): BudgetPlan {
+  const r = calcUsable(data, s, first, { asOf: true });
+  const headDays = Math.min(spanDays({ start: first, end }), r.days);
   const head = r.perDay * headDays;
-  return { amount: head, end: addDays(monday, 6), basis: { ...basisOf(r), headDays, head } };
+  return { amount: head, end, basis: { ...basisOf(r), headDays, head } };
 }
 
-/** 給料日をまたぐ週の、給料日から日曜までの分：給料日の時点の1日あたり × 給料日から日曜までの日数 */
-export function weekTailPlan(data: BudgetData, s: BudgetSettings, payday: string, sunday: string): { tail: number; tailDays: number; tailPerDay: number } {
+/** 給料日をまたぐ週の、給料日から週の最終日までの分：給料日の時点の1日あたり × 給料日から最終日までの日数 */
+export function weekTailPlan(data: BudgetData, s: BudgetSettings, payday: string, last: string): { tail: number; tailDays: number; tailPerDay: number } {
   const r = calcUsable(data, s, payday, { asOf: true });
-  const tailDays = daysBetween(payday, sunday) + 1;
+  const tailDays = daysBetween(payday, last) + 1;
   return { tail: r.perDay * tailDays, tailDays, tailPerDay: r.perDay };
 }
 
@@ -309,9 +347,9 @@ export function findSnapshot(snapshots: readonly BudgetSnapshot[], period: "week
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))[0];
 }
 
-/** 月曜が給料日（区切りの始まり）で、まだ給料が入っていないか。入っていない間は週の予算を決めない */
-export function weekWaitingForSalary(data: BudgetData, s: BudgetSettings, monday: string): boolean {
-  return paydayOnOrBefore(monday, s) === monday && !salaryEntered(data, paydayPeriodOf(monday, s));
+/** 週の初日が給料日（区切りの始まり）で、まだ給料が入っていないか。入っていない間は週の予算を決めない */
+export function weekWaitingForSalary(data: BudgetData, s: BudgetSettings, first: string): boolean {
+  return paydayOnOrBefore(first, s) === first && !salaryEntered(data, paydayPeriodOf(first, s));
 }
 
 /** 月の予算（区切りが給料日）が、給料の入るのを待っているか */
@@ -340,14 +378,14 @@ function stamp(base: Base, period: "week" | "month", start: string, plan: Budget
  * 足すのは、給料日が来て、その区切りの給料が入ってから（force なら給料を待たない）。
  */
 export function weekWithTail(week: BudgetSnapshot, ctx: BudgetContext, force = false): BudgetSnapshot | null {
-  const sunday = addDays(week.start, 6);
-  const payday = paydaysBetween(ctx.settings, addDays(week.start, 1), sunday)[0];
+  const last = week.end;
+  const payday = paydaysBetween(ctx.settings, addDays(week.start, 1), last)[0];
   if (!payday || payday > ctx.today) return null;
   if (!force) {
     if (week.basis.tail !== undefined) return null;
     if (!salaryEntered(ctx.data, paydayPeriodOf(payday, ctx.settings))) return null;
   }
-  const t = weekTailPlan(ctx.data, ctx.settings, payday, sunday);
+  const t = weekTailPlan(ctx.data, ctx.settings, payday, last);
   const head = week.basis.head ?? week.amount - (week.basis.tail ?? 0);
   return { ...week, amount: head + t.tail, basis: { ...week.basis, head, tail: t.tail, tailDays: t.tailDays, tailPerDay: t.tailPerDay } };
 }
@@ -361,11 +399,11 @@ export function planBudgets(ctx: BudgetContext): BudgetSnapshot[] {
   // 明細が1件もないうちは決めない(0円で決まってしまうため)
   if (!data.transactions.some((t) => t.deletedAt === null)) return [];
   const out = new Map<Id, BudgetSnapshot>();
-  const monday = weekStartOf(today);
+  const span = weekSpanOf(today, s, ctx.snapshots);
 
-  let week = findSnapshot(ctx.snapshots, "week", monday);
-  if (!week && !weekWaitingForSalary(data, s, monday)) {
-    week = stamp(ctx.makeBase(), "week", monday, weekBudgetPlan(data, s, monday));
+  let week = findSnapshot(ctx.snapshots, "week", span.start);
+  if (!week && !weekWaitingForSalary(data, s, span.start)) {
+    week = stamp(ctx.makeBase(), "week", span.start, weekBudgetPlan(data, s, span.start, span.end));
     out.set(week.id, week);
   }
   if (week) {
@@ -376,10 +414,10 @@ export function planBudgets(ctx: BudgetContext): BudgetSnapshot[] {
     }
   }
 
-  const span = currentMonthSpan(s, today);
-  if (!findSnapshot(ctx.snapshots, "month", span.start) && !monthWaitingForSalary(data, s, today)) {
-    const plan = s.budgetMonthBoundary === "calendar" ? monthBudgetPlanCalendar(data, s, today.slice(0, 7)) : monthBudgetPlanPayday(data, s, span.start);
-    const month = stamp(ctx.makeBase(), "month", span.start, plan);
+  const monthSpan = currentMonthSpan(s, today);
+  if (!findSnapshot(ctx.snapshots, "month", monthSpan.start) && !monthWaitingForSalary(data, s, today)) {
+    const plan = s.budgetMonthBoundary === "calendar" ? monthBudgetPlanCalendar(data, s, today.slice(0, 7)) : monthBudgetPlanPayday(data, s, monthSpan.start);
+    const month = stamp(ctx.makeBase(), "month", monthSpan.start, plan);
     out.set(month.id, month);
   }
   return [...out.values()];
@@ -387,9 +425,9 @@ export function planBudgets(ctx: BudgetContext): BudgetSnapshot[] {
 
 /** 今の額で決め直す（まだ決まっていなければ決める）。今週の予算。書き込む予算を返す */
 export function planRecalcWeek(ctx: BudgetContext): BudgetSnapshot[] {
-  const monday = weekStartOf(ctx.today);
-  const existing = findSnapshot(ctx.snapshots, "week", monday);
-  let week = stamp(ctx.makeBase(), "week", monday, weekBudgetPlan(ctx.data, ctx.settings, monday), existing, existing ? ctx.nowMs : undefined);
+  const span = weekSpanOf(ctx.today, ctx.settings, ctx.snapshots);
+  const existing = findSnapshot(ctx.snapshots, "week", span.start);
+  let week = stamp(ctx.makeBase(), "week", span.start, weekBudgetPlan(ctx.data, ctx.settings, span.start, span.end), existing, existing ? ctx.nowMs : undefined);
   const withTail = weekWithTail(week, ctx, true);
   if (withTail) week = withTail;
   return [week];
@@ -403,7 +441,7 @@ export function planRecalcMonth(ctx: BudgetContext): BudgetSnapshot[] {
   const plan = s.budgetMonthBoundary === "calendar" ? monthBudgetPlanCalendar(data, s, today.slice(0, 7)) : monthBudgetPlanPayday(data, s, span.start);
   const out: BudgetSnapshot[] = [stamp(ctx.makeBase(), "month", span.start, plan, existing, existing ? ctx.nowMs : undefined)];
   if (s.budgetMonthBoundary === "payday") {
-    const week = findSnapshot(ctx.snapshots, "week", weekStartOf(span.start));
+    const week = findWeekContaining(ctx.snapshots, span.start);
     const withTail = week ? weekWithTail(week, ctx, true) : null;
     if (withTail) out.push(withTail);
   }
@@ -423,9 +461,16 @@ export interface BudgetFigure {
   remaining: number | null;
 }
 
+/** はじめて使う状態か：資産も明細もない（削除済みは数えない）。ホームの「はじめに」と、内訳・見通しの数字を隠すかの判定 */
+export function isFirstUse(data: Pick<BudgetData, "accounts" | "transactions">): boolean {
+  return !data.accounts.some((a) => a.deletedAt === null) && !data.transactions.some((t) => t.deletedAt === null);
+}
+
 export interface HomeSummary {
   usable: UsableResult;
   hasTransactions: boolean;
+  /** 資産も明細もない（はじめて開いた人）。内訳の数字・見通しの表は出さず、「はじめに」を出す */
+  firstUse: boolean;
   week: BudgetFigure & { bars: Array<{ date: string; amount: number }> };
   month: BudgetFigure;
   reserveTotal: number;
@@ -439,9 +484,8 @@ export function summarizeHome(data: BudgetData, snapshots: readonly BudgetSnapsh
   const spentMap = spendByTx(data.reserveMoves);
   const usable = calcUsable(data, s, today);
 
-  const monday = weekStartOf(today);
-  const weekSnap = findSnapshot(snapshots, "week", monday);
-  const weekSpan = { start: monday, end: addDays(monday, 6) };
+  const weekSpan = weekSpanOf(today, s, snapshots);
+  const weekSnap = findSnapshot(snapshots, "week", weekSpan.start);
   const weekSpent = variableSpent(txs, weekSpan, spentMap);
 
   const monthSpan = currentMonthSpan(s, today);
@@ -455,14 +499,15 @@ export function summarizeHome(data: BudgetData, snapshots: readonly BudgetSnapsh
   return {
     usable,
     hasTransactions: txs.length > 0,
+    firstUse: isFirstUse(data),
     week: {
       start: weekSpan.start,
       end: weekSpan.end,
       snapshot: weekSnap,
-      waiting: !weekSnap && weekWaitingForSalary(data, s, monday),
+      waiting: !weekSnap && weekWaitingForSalary(data, s, weekSpan.start),
       spent: weekSpent,
       remaining: weekSnap ? weekSnap.amount - weekSpent : null,
-      bars: variableByDay(txs, monday, 7, spentMap),
+      bars: variableByDay(txs, weekSpan.start, spanDays(weekSpan), spentMap),
     },
     month: {
       start: monthRangeNow.start,

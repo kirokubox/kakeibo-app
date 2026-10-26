@@ -1,5 +1,5 @@
 import { DATA_STORE_NAMES } from "./types.js";
-import type { BackupFile, BackupSource, Base, DataSet, DataStoreName, DataStoreRecords } from "./types.js";
+import type { BackupFile, BackupSource, Base, DataSet, DataStoreName, DataStoreRecords, Settings } from "./types.js";
 
 // 追加インポートの差分計算（データ管理方針どおり：既存データを消さない）。
 // 同じIDの比較は updatedAt（後のほうが新しい）。論理削除は updatedAt が更新されるので、
@@ -103,4 +103,23 @@ export function sourceNote(source: BackupSource | undefined, transactionCount: n
   if (!source) return null;
   const from = source.importFrom ? `（${source.importFrom}以降）` : "";
   return `取り込み元：${source.label}${from}・明細 ${transactionCount.toLocaleString("ja-JP")}件`;
+}
+
+/** 本人用の初期データか（`profile` がある）。あると「設定も読み込む」が初期でオンになる */
+export function isProfileBackup(backup: Pick<BackupFile, "profile">): boolean {
+  return backup.profile !== undefined;
+}
+
+/** 「設定も読み込む」の初期値：本人用の初期データのときだけオン */
+export function defaultImportSettings(backup: Pick<BackupFile, "profile">): boolean {
+  return isProfileBackup(backup);
+}
+
+/**
+ * 「設定も読み込む」をオンにして実行したあとの設定：ファイルの設定で置き換える。
+ * 最後にバックアップを保存した日時（lastBackupAt）だけは、今の端末の値を残す。オフなら null（設定は変えない）。
+ */
+export function settingsAfterImport(current: Settings, backup: Pick<BackupFile, "settings">, includeSettings: boolean): Settings | null {
+  if (!includeSettings) return null;
+  return { ...backup.settings, lastBackupAt: current.lastBackupAt };
 }

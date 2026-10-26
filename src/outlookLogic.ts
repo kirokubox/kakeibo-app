@@ -1,5 +1,5 @@
 // 見通しの表のロジック（画面から切り離した純粋なロジック）。
-// 給料日ごとの区切りで、3〜6か月先までの「期のはじめの使える資産 → 期末の見込み」を出す。
+// 給料日ごとの区切りで、3か月・6か月・1年（12列）先までの「期のはじめの使える資産 → 期末の見込み」を出す。
 // 正本：172_家計簿_実装指示_段階6 §8、初期仕様 §6（その区切りの給料でその区切りをまかなえるか。前借りの見え方にしない）
 import { computeBalances, summarizeAccounts } from "./accountLogic.js";
 import { addDays, addMonths } from "./dateUtils.js";
@@ -12,7 +12,9 @@ import type { DataSet, PlannedExpense } from "./types.js";
 
 export type OutlookData = Pick<DataSet, "accounts" | "categories" | "transactions" | "recurrings" | "reserves" | "reserveMoves" | "plannedExpenses" | "payrolls">;
 
-export type OutlookMonths = 3 | 6;
+/** 見通しの長さ（給料日ごとの区切りの数）。3か月・6か月・1年 */
+export type OutlookMonths = 3 | 6 | 12;
+export const OUTLOOK_LENGTHS: readonly OutlookMonths[] = [3, 6, 12];
 
 export interface OutlookPlanned {
   planned: PlannedExpense;
@@ -166,4 +168,26 @@ export function buildOutlook(data: OutlookData, s: BudgetSettings, today: string
     open = closing;
   });
   return { columns, averagedPeriods: periods, currentSpent };
+}
+
+export interface OutlookSummary {
+  /** 期間の収入 − 出費（列の「収入−出費」の合計） */
+  net: number;
+  /** 期末の見込みが一番低い区切り（列がなければ null。同じ額なら早い区切り） */
+  lowest: { start: string; end: string; closing: number } | null;
+  /** 生活防衛資金を下回る見込みの区切りの数 */
+  belowCount: number;
+}
+
+/** 6か月・1年の見通しの上に出す「まとめ」 */
+export function summarizeOutlook(columns: readonly OutlookColumn[]): OutlookSummary {
+  let lowest: OutlookSummary["lowest"] = null;
+  let net = 0;
+  let belowCount = 0;
+  for (const c of columns) {
+    net += c.net;
+    if (c.belowFund) belowCount++;
+    if (lowest === null || c.closing < lowest.closing) lowest = { start: c.start, end: c.end, closing: c.closing };
+  }
+  return { net, lowest, belowCount };
 }

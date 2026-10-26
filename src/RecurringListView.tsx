@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatDateJa } from "./dateUtils";
 import { categoryNames } from "./entryLogic";
-import { EntryView } from "./EntryView";
+import { EntryView, entryKey } from "./EntryView";
 import type { EntryMode } from "./EntryView";
 import { Icon } from "./Icon";
 import { formatYen } from "./money";
@@ -66,7 +66,7 @@ export function RecurringListView({ today, onBack }: Props) {
   const overlay = entry && (
     <div className="screen-overlay">
       <EntryView
-        key={entry.kind === "recurring" ? `rec-${entry.rec.id}` : entry.kind === "edit" ? `edit-${entry.tx.id}` : "other"}
+        key={entryKey(entry)}
         mode={entry}
         today={today}
         showToast={showToast}
@@ -140,6 +140,9 @@ export function RecurringListView({ today, onBack }: Props) {
           <Icon name="chevron-left" size={22} />
         </button>
         <h1 className="topbar-title">繰り返し</h1>
+        <button type="button" className="text-btn" onClick={() => setEntry({ kind: "recurringNew" })}>
+          追加
+        </button>
       </header>
       <main className="content">
         {loadError && (
@@ -158,7 +161,7 @@ export function RecurringListView({ today, onBack }: Props) {
         )}
         {recurrings !== null && rows.running.length === 0 && rows.ended.length === 0 && (
           <section className="card">
-            <p>繰り返しはまだありません。入力画面の日付の右にある「繰り返し」から作ります。</p>
+            <p>繰り返しはまだありません。右上の追加から足せます。入力画面の日付の右にある「繰り返し」からも作れます。</p>
           </section>
         )}
         {rows.running.length > 0 && (

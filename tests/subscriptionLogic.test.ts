@@ -25,8 +25,14 @@ function review(id: string, reviewedAt: string, items: SubscriptionReview["items
   return { id, createdAt: `${reviewedAt}T00:00:00.000Z`, updatedAt: T0, deletedAt: null, reviewedAt, items };
 }
 
-test("固定費＞サブスクの分類ID", () => {
-  assert.equal(SUBSCRIPTION_CATEGORY_ID, "seed:expense:固定費/サブスク");
+test("サブスクの分類ID：一般向けの初期分類のID。v0.8.0 までの初期分類のIDの明細も数える", () => {
+  assert.equal(SUBSCRIPTION_CATEGORY_ID, "seed:expense:サブスク/サブスク");
+  const legacy = tx("legacy", { categoryId: "seed:expense:固定費/サブスク", content: "テスト動画", date: "2026-08-01", amount: 500 });
+  const other = tx("other", { categoryId: "seed:expense:その他/その他", content: "テスト動画", date: "2026-08-01", amount: 500 });
+  const current = sub("current", "テスト動画", "2026-09-01", 500);
+  const found = summarizeSubscriptions([legacy, other, current]);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].count, 2);
 });
 
 test("まとめ：内容ごとに直近の金額・最後に払った日・回数。全角半角や空白の違いは同じ内容", () => {

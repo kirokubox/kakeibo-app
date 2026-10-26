@@ -8,6 +8,7 @@ import type { MenuItem } from "./KebabMenu";
 import { formatYen } from "./money";
 import { shortDate } from "./periodLogic";
 import { ReserveEditor } from "./ReserveEditor";
+import { plannedNotesByReserve } from "./plannedLogic";
 import { RESERVE_KIND_LABELS, assignWarning, balanceOf, moveHistory, newMove, targetNote, validateAssign, validateRelease } from "./reserveLogic";
 import { newBase, saveRecord, saveStores } from "./storage";
 import type { ShowToast } from "./Toast";
@@ -33,6 +34,7 @@ export function ReserveDetailView({ reserve, bundle, today, usable, onBack, onCh
   const history = useMemo(() => moveHistory(reserve.id, bundle.reserveMoves), [reserve.id, bundle.reserveMoves]);
   const txById = useMemo(() => new Map(bundle.transactions.map((t) => [t.id, t])), [bundle.transactions]);
   const note = targetNote(reserve, balance);
+  const plannedNote = plannedNotesByReserve(bundle.plannedExpenses).get(reserve.id);
   const closed = !!reserve.closedAt;
   const fail = (e: unknown) => showToast(e instanceof Error ? e.message : "保存できませんでした");
 
@@ -81,6 +83,7 @@ export function ReserveDetailView({ reserve, bundle, today, usable, onBack, onCh
           <p className="summary-main">{formatYen(balance)}</p>
           {reserve.targetMonth && <p className="summary-note">{formatMonthJa(reserve.targetMonth)}に使う</p>}
           {note && <p className="summary-note">{note}</p>}
+          {plannedNote && <p className="summary-note">{plannedNote}</p>}
           <div className="actions center">
             <button type="button" className="primary-btn" onClick={() => setSheet("assign")}>
               入れる
@@ -122,7 +125,7 @@ export function ReserveDetailView({ reserve, bundle, today, usable, onBack, onCh
       </main>
 
       {sheet === "assign" && (
-        <MoveSheet
+        <ReserveMoveSheet
           kind="assign"
           balance={balance}
           usable={usable}
@@ -135,7 +138,7 @@ export function ReserveDetailView({ reserve, bundle, today, usable, onBack, onCh
         />
       )}
       {sheet === "release" && (
-        <MoveSheet
+        <ReserveMoveSheet
           kind="release"
           balance={balance}
           usable={usable}
@@ -230,8 +233,8 @@ interface MoveProps {
   onClose: () => void;
 }
 
-/** 入れる・戻すの金額を入れるシート */
-function MoveSheet({ kind, balance, usable, onSave, onClose }: MoveProps) {
+/** 入れる・戻すの金額を入れるシート（予定出費の「この予定のために取っておく」からも使う） */
+export function ReserveMoveSheet({ kind, balance, usable, onSave, onClose }: MoveProps) {
   const [amount, setAmount] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState("");

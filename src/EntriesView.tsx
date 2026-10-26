@@ -30,7 +30,7 @@ import {
   weekdayShort,
 } from "./periodLogic";
 import { getAll, getTransactionsInRange } from "./storage";
-import type { Account, Category, Transaction } from "./types";
+import type { Account, Category, Transaction, WeekStart } from "./types";
 
 type ViewMode = "day" | "week" | "month";
 
@@ -39,6 +39,8 @@ const MODE_LABELS: Record<ViewMode, string> = { day: "日別", week: "週別", m
 interface Props {
   tabBar: ReactNode;
   today: string;
+  /** 週の始まり（設定）。週別・カレンダーの並びに使う */
+  weekStart: WeekStart;
   /** 保存・削除などで増える。変わったら読み直す */
   version: number;
   onOpenSettings: () => void;
@@ -54,11 +56,11 @@ function readMode(): ViewMode {
 }
 
 /** 明細タブ：日別（カレンダー）・週別・月別 */
-export function EntriesView({ tabBar, today, version, onOpenSettings, onAdd, onEdit, onChanged }: Props) {
+export function EntriesView({ tabBar, today, weekStart: weekSetting, version, onOpenSettings, onAdd, onEdit, onChanged }: Props) {
   const [mode, setMode] = useState<ViewMode>(readMode);
   const [month, setMonth] = useState(() => monthKeyOf(today));
   const [selectedDay, setSelectedDay] = useState(today);
-  const [weekStart, setWeekStart] = useState(() => weekStartOf(today));
+  const [weekFirst, setWeekFirst] = useState(() => weekStartOf(today, weekSetting));
   const [txs, setTxs] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -73,10 +75,10 @@ export function EntriesView({ tabBar, today, version, onOpenSettings, onAdd, onE
 
   // 表示中の期間（＋前後の週）だけを date の索引で読む
   const range = useMemo(() => {
-    if (mode === "week") return { start: addDays(weekStart, -7), end: addDays(weekStart, 13) };
+    if (mode === "week") return { start: addDays(weekFirst, -7), end: addDays(weekFirst, 13) };
     const r = monthRange(month);
     return { start: addDays(r.start, -7), end: addDays(r.end, 7) };
-  }, [mode, month, weekStart]);
+  }, [mode, month, weekFirst]);
 
   useEffect(() => {
     const my = ++seq.current;
@@ -101,7 +103,7 @@ export function EntriesView({ tabBar, today, version, onOpenSettings, onAdd, onE
   const changeMode = (next: ViewMode) => {
     setMode(next);
     writePref(PREF_ENTRIES_MODE, next);
-    if (next === "week") setWeekStart(weekStartOf(selectedDay));
+    if (next === "week") setWeekFirst(weekStartOf(selectedDay, weekSetting));
   };
 
   const goMonth = (m: string) => {
@@ -110,20 +112,20 @@ export function EntriesView({ tabBar, today, version, onOpenSettings, onAdd, onE
   };
 
   const shift = (n: number) => {
-    if (mode === "week") setWeekStart((w) => addDays(w, 7 * n));
+    if (mode === "week") setWeekFirst((w) => addDays(w, 7 * n));
     else goMonth(addMonths(month, n));
   };
 
   const monthRangeNow = monthRange(month);
-  const weekRangeNow = weekRange(weekStart);
+  const weekRangeNow = weekRange(weekFirst, weekSetting);
   const period = mode === "week" ? weekRangeNow : monthRangeNow;
   // 返金に充てた額（期間の外の立替・返金も見るので、立替・返金の集まりから計算する）
   const applied = useMemo(() => computeAllocation(reimburse).applied, [reimburse]);
   const totals = useMemo(() => summarize(txs, period, applied), [txs, period, applied]);
-  const cells = useMemo(() => (mode === "day" ? calendarCells(month, txs, applied) : []), [mode, month, txs, applied]);
+  const cells = useMemo(() => (mode === "day" ? calendarCells(month, txs, applied, weekSetting) : []), [mode, month, txs, applied, weekSetting]);
   const dayGroup = useMemo(() => (mode === "day" ? groupByDay(txs, { start: selectedDay, end: selectedDay }, applied)[0] : undefined), [mode, txs, selectedDay, applied]);
   const groups = useMemo(() => (mode === "day" ? [] : groupByDay(txs, period, applied)), [mode, txs, period, applied]);
-  const bars = useMemo(() => (mode === "week" ? weekExpenseBars(txs, weekStart, applied) : []), [mode, txs, weekStart, applied]);
+  const bars = useMemo(() => (mode === "week" ? weekExpenseBars(txs, weekFirst, applied) : []), [mode, txs, weekFirst, applied]);
   const barMax = Math.max(1, ...bars.map((b) => b.expense));
 
   const select = (tx: Transaction) => {
@@ -131,7 +133,7 @@ export function EntriesView({ tabBar, today, version, onOpenSettings, onAdd, onE
     else onEdit(tx);
   };
 
-  const title = mode === "week" ? weekTitle(weekStart) : monthTitle(month);
+  const title = mode === "week" ? weekTitle(weekFirst) : monthTitle(month);
 
   if (searching) return <SearchView today={today} version={version} onBack={() => setSearching(false)} onEdit={onEdit} onChanged={onChanged} />;
 
@@ -211,7 +213,7 @@ export function EntriesView({ tabBar, today, version, onOpenSettings, onAdd, onE
         {mode === "day" && (
           <>
             <section className="card calendar-card">
-              <CalendarMonth cells={cells} today={today} selected={selectedDay} onSelect={setSelectedDay} />
+              <CalendarMonth cells={cells} weekStart={weekSetting} today={today} selected={selectedDay} onSelect={setSelectedDay} />
             </section>
             {dayGroup ? (
               <DayGroup group={dayGroup} accountNames={accountNames} categories={categories} onSelect={select} />

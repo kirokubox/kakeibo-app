@@ -3,7 +3,7 @@ import { defaultSettings } from "./constants";
 import { AssetsView } from "./AssetsView";
 import { ensureBudgets } from "./budgetStore";
 import { EntriesView } from "./EntriesView";
-import { EntryView } from "./EntryView";
+import { EntryView, entryKey } from "./EntryView";
 import type { EntryMode } from "./EntryView";
 import { HomeView } from "./HomeView";
 import { OutlookView } from "./OutlookView";
@@ -29,6 +29,8 @@ interface PayrollTarget {
 export default function App() {
   const [tab, setTab] = useState<TabId>("home");
   const [showSettings, setShowSettings] = useState(false);
+  /** 設定を開くとき最初に出す分類の画面（ホームの「はじめに」から） */
+  const [settingsStart, setSettingsStart] = useState<"expense" | null>(null);
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [persistence, setPersistence] = useState<PersistenceState>("unsupported");
   const [ready, setReady] = useState(false);
@@ -144,7 +146,7 @@ export default function App() {
   const entryOverlay = entry && (
     <div className="screen-overlay">
       <EntryView
-        key={entry.kind === "new" ? `new-${entry.date}-${entry.transfer ? "t" : ""}-${entry.prefill?.content ?? ""}-${entry.prefill?.amount ?? ""}` : entry.kind === "recurring" ? `rec-${entry.rec.id}` : `${entry.kind}-${entry.tx.id}`}
+        key={entryKey(entry)}
         mode={entry}
         today={today}
         showToast={showToast}
@@ -185,11 +187,13 @@ export default function App() {
         <div className="app">
           <SettingsView
             settings={settings}
+            initialCategoryPage={settingsStart}
             persistence={persistence}
             onPersistenceChange={setPersistence}
             onSettingsChange={updateSettings}
             onClose={() => {
               setShowSettings(false);
+              setSettingsStart(null);
               bump();
             }}
           />
@@ -217,7 +221,7 @@ export default function App() {
     if (tab === "entries") {
       return (
         <div className="app">
-          <EntriesView tabBar={tabBar} today={today} version={dataVersion} onOpenSettings={() => setShowSettings(true)} onAdd={openNew} onEdit={openEdit} onChanged={bump} />
+          <EntriesView tabBar={tabBar} today={today} weekStart={settings.weekStart} version={dataVersion} onOpenSettings={() => setShowSettings(true)} onAdd={openNew} onEdit={openEdit} onChanged={bump} />
           {overlays}
         </div>
       );
@@ -236,6 +240,11 @@ export default function App() {
             onEdit={openEdit}
             onOpenPayroll={() => openPayroll({})}
             onGoEntries={() => setTab("entries")}
+            onGoAssets={() => setTab("assets")}
+            onGoCategories={() => {
+              setSettingsStart("expense");
+              setShowSettings(true);
+            }}
             onGoSummary={() => setTab("summary")}
             onChanged={bump}
           />
@@ -255,7 +264,7 @@ export default function App() {
 
     return (
       <div className="app">
-        <SummaryView tabBar={tabBar} today={today} version={dataVersion} onOpenSettings={() => setShowSettings(true)} onEdit={openEdit} onChanged={bump} />
+        <SummaryView tabBar={tabBar} today={today} weekStart={settings.weekStart} version={dataVersion} onOpenSettings={() => setShowSettings(true)} onEdit={openEdit} onChanged={bump} />
         {overlays}
       </div>
     );

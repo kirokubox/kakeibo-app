@@ -701,3 +701,17 @@ button.home-card:active { background: var(--kb-surface-2); }
 .tag-mark { background: var(--kb-surface-2); color: var(--kb-text-2); }
 .tag-mark.satisfied { background: var(--kb-accent-soft); color: var(--kb-accent-strong); }
 .tag-mark.estimated { background: var(--kb-warning-soft); color: var(--kb-warning); }
+
+/* ---- 改善1：一般向けの初期値・使い始めの整備 ---- */
+.list-intro { padding: var(--kb-space-2) var(--kb-space-4) var(--kb-space-1); line-height: 1.6 !important; }
+.welcome-card { padding: var(--kb-space-3) 0; }
+.welcome-title { margin: 0 !important; padding: var(--kb-space-1) var(--kb-space-4) var(--kb-space-2); font-size: var(--kb-fs-l) !important; }
+.welcome-no { flex: none; width: 1.5em; color: var(--kb-accent-strong); font-weight: 700; }
+.welcome-note { padding: var(--kb-space-3) var(--kb-space-4) var(--kb-space-1); line-height: 1.7 !important; }
+.welcome-note .text-btn { display: inline-flex; min-height: 32px; margin-left: var(--kb-space-1); padding: 0 var(--kb-space-2); }
+.outlook-summary { padding: var(--kb-space-3) var(--kb-space-4); }
+.outlook-summary-title { margin: 0 0 var(--kb-space-2) !important; font-size: var(--kb-fs-s) !important; color: var(--kb-text-2); }
+.outlook-summary .caution { color: var(--kb-warning); }
+.payroll-intro { display: flex; flex-direction: column; gap: var(--kb-space-2); }
+.intro-list { margin: 0; padding-left: 1.2em; line-height: 1.7; font-size: var(--kb-fs-m); }
+.payroll-section .list-intro { padding-top: 0; }

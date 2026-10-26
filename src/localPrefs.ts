@@ -3,6 +3,8 @@
 export const PREF_ENTRIES_MODE = "kakeibo-app:entriesMode";
 export const PREF_LAST_ACCOUNT = "kakeibo-app:lastAccountId";
 export const PREF_OUTLOOK_MONTHS = "kakeibo-app:outlookMonths";
+/** 給料明細のひな形の最初の説明を閉じたか（"1" なら二度と出さない） */
+export const PREF_PAYROLL_INTRO = "kakeibo-app:payrollIntroSeen";
 
 export function readPref(key: string): string | null {
   try {

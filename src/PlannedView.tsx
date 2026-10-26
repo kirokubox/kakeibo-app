@@ -4,25 +4,47 @@ import type { BudgetBundle } from "./budgetStore";
 import { formatMonthJa, nowIso } from "./dateUtils";
 import { formatYen } from "./money";
 import { shortDate } from "./periodLogic";
-import { doneCandidates, isPlannedDone, markPlannedDone, plannedStatuses, reopenPlanned, sortPlanned, validatePlannedDraft } from "./plannedLogic";
-import { reserveBalances, splitReserves } from "./reserveLogic";
-import { newBase, saveRecord } from "./storage";
+import { doneCandidates, isPlannedDone, markPlannedDone, planSetAside, plannedStatuses, reopenPlanned, sortPlanned, validatePlannedDraft } from "./plannedLogic";
+import { ReserveMoveSheet } from "./ReserveDetailView";
+import { balanceOf, newMove, reserveBalances, splitReserves } from "./reserveLogic";
+import { newBase, saveRecord, saveStores } from "./storage";
 import type { ShowToast } from "./Toast";
-import type { PlannedExpense } from "./types";
+import type { PlannedExpense, Reserve } from "./types";
 import { YenInput } from "./YenInput";
 
 interface Props {
   bundle: BudgetBundle;
   today: string;
+  /** いまの使える額（取り置きに入れるときの案内に使う） */
+  usable: number | null;
   onChanged: () => void;
   showToast: ShowToast;
 }
 
-type Sheet = { kind: "menu"; planned: PlannedExpense } | { kind: "edit"; planned: PlannedExpense | null } | { kind: "done"; planned: PlannedExpense } | { kind: "delete"; planned: PlannedExpense } | null;
+/** 予定出費の一覧の上の説明 */
+export const PLANNED_INTRO = "先の月に出ていくと分かっている出費。「取っておく」で、今のうちから使える額から外しておけます";
+
+type Sheet = { kind: "assign"; planned: PlannedExpense; reserve: Reserve } | { kind: "menu"; planned: PlannedExpense } | { kind: "edit"; planned: PlannedExpense | null } | { kind: "done"; planned: PlannedExpense } | { kind: "delete"; planned: PlannedExpense } | null;
 
 /** 見通しタブの「予定出費」：一覧・追加・直す・済みにする・削除 */
-export function PlannedView({ bundle, today, onChanged, showToast }: Props) {
+export function PlannedView({ bundle, today, usable, onChanged, showToast }: Props) {
   const [sheet, setSheet] = useState<Sheet>(null);
+
+  /** 「この予定のために取っておく」：結んだ取り置きがなければ作って結び、そのまま「入れる」を開く。あれば「入れる」を開くだけ */
+  const setAside = async (p: PlannedExpense) => {
+    const plan = planSetAside(p, bundle.reserves, newBase());
+    if (plan.kind === "existing") {
+      setSheet({ kind: "assign", planned: p, reserve: plan.reserve });
+      return;
+    }
+    try {
+      await saveStores({ reserves: [plan.reserve], plannedExpenses: [plan.planned] });
+      onChanged();
+      setSheet({ kind: "assign", planned: plan.planned, reserve: plan.reserve });
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "保存できませんでした");
+    }
+  };
   const active = useMemo(() => sortPlanned(bundle.plannedExpenses.filter((p) => p.deletedAt === null)), [bundle.plannedExpenses]);
   const statuses = useMemo(
     () => plannedStatuses(active, reserveBalances(bundle.reserveMoves)),
@@ -59,6 +81,7 @@ export function PlannedView({ bundle, today, onChanged, showToast }: Props) {
           追加
         </button>
       </h2>
+      <p className="field-hint list-intro">{PLANNED_INTRO}</p>
       {active.length === 0 ? (
         <p className="empty-note small">予定出費はまだありません。月が決まっている先の出費（旅行・車検など）を入れておくと、使える額と見通しに入ります。</p>
       ) : (
@@ -71,6 +94,7 @@ export function PlannedView({ bundle, today, onChanged, showToast }: Props) {
       {sheet?.kind === "menu" && (
         <PlannedMenu
           planned={sheet.planned}
+          onSetAside={() => void setAside(sheet.planned)}
           onEdit={() => setSheet({ kind: "edit", planned: sheet.planned })}
           onDone={() => setSheet({ kind: "done", planned: sheet.planned })}
           onReopen={() => {
@@ -83,6 +107,19 @@ export function PlannedView({ bundle, today, onChanged, showToast }: Props) {
               .catch((e) => showToast(e instanceof Error ? e.message : "保存できませんでした"));
           }}
           onDelete={() => setSheet({ kind: "delete", planned: sheet.planned })}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet?.kind === "assign" && (
+        <ReserveMoveSheet
+          kind="assign"
+          balance={balanceOf(sheet.reserve.id, bundle.reserveMoves)}
+          usable={usable}
+          onSave={async (amount) => {
+            await saveRecord("reserveMoves", newMove(newBase(), sheet.reserve.id, "assign", amount, today));
+            showToast(`${formatYen(amount)}を「${sheet.reserve.name}」に入れました`);
+            onChanged();
+          }}
           onClose={() => setSheet(null)}
         />
       )}
@@ -139,6 +176,7 @@ export function PlannedView({ bundle, today, onChanged, showToast }: Props) {
 
 function PlannedMenu({
   planned,
+  onSetAside,
   onEdit,
   onDone,
   onReopen,
@@ -146,6 +184,7 @@ function PlannedMenu({
   onClose,
 }: {
   planned: PlannedExpense;
+  onSetAside: () => void;
   onEdit: () => void;
   onDone: () => void;
   onReopen: () => void;
@@ -155,6 +194,13 @@ function PlannedMenu({
   return (
     <BottomSheet title={planned.name} onClose={onClose}>
       <ul className="choice-list">
+        {!isPlannedDone(planned) && (
+          <li>
+            <button type="button" className="choice" onClick={onSetAside}>
+              <span className="choice-label">この予定のために取っておく</span>
+            </button>
+          </li>
+        )}
         <li>
           <button type="button" className="choice" onClick={onEdit}>
             <span className="choice-label">直す</span>

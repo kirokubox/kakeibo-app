@@ -2,7 +2,7 @@
 // 予定出費 = 月が決まっている先の出費（旅行・車検など）。取り置きと結ぶと、取り置き済みの額を引いた「足りない額」だけが決まった出費になる。
 import { isMonthKey } from "./dateUtils.js";
 import { isYen } from "./money.js";
-import type { Id, PlannedExpense, Transaction } from "./types.js";
+import type { Base, Id, PlannedExpense, Reserve, Transaction } from "./types.js";
 
 /** 済みか（済みの判定は doneAt） */
 export function isPlannedDone(p: Pick<PlannedExpense, "doneAt">): boolean {
@@ -92,4 +92,53 @@ export function reopenPlanned(p: PlannedExpense): PlannedExpense {
   delete next.doneAt;
   delete next.doneTxId;
   return next;
+}
+
+// ---- 予定出費から取り置きを作る ----
+
+/** 予定出費に結んである、いま使える取り置き（削除していない・閉じていない）。なければ undefined */
+export function linkedOpenReserve(p: Pick<PlannedExpense, "reserveId">, reserves: readonly Reserve[]): Reserve | undefined {
+  if (!p.reserveId) return undefined;
+  return reserves.find((r) => r.id === p.reserveId && r.deletedAt === null && !r.closedAt);
+}
+
+/**
+ * 予定出費から作る取り置きの名前：予定の名前。同じ名前の取り置きがすでにあれば「（使う月）」を、
+ * それでも重なれば「（使う月）2」…を付ける（取り置きの名前は重ならない決まり）。
+ */
+export function reserveNameForPlanned(p: Pick<PlannedExpense, "name" | "month">, reserves: readonly Reserve[]): string {
+  const taken = new Set(reserves.filter((r) => r.deletedAt === null).map((r) => r.name.trim()));
+  const base = p.name.trim();
+  if (!taken.has(base)) return base;
+  const withMonth = `${base}（${p.month}）`;
+  if (!taken.has(withMonth)) return withMonth;
+  for (let n = 2; ; n++) {
+    const candidate = `${withMonth}${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
+/** 取り置きごとの「予定：帰省 2027-01」（結んでいる、済みでない予定出費。月の順。複数は「、」でつなぐ） */
+export function plannedNotesByReserve(planned: readonly PlannedExpense[]): Map<Id, string> {
+  const names = new Map<Id, string[]>();
+  for (const p of sortPlanned(planned.filter((x) => x.deletedAt === null && !isPlannedDone(x) && x.reserveId))) {
+    const list = names.get(p.reserveId as Id) ?? [];
+    list.push(`${p.name} ${p.month}`);
+    names.set(p.reserveId as Id, list);
+  }
+  return new Map([...names].map(([id, list]) => [id, `予定：${list.join("、")}`]));
+}
+
+export type SetAsidePlan =
+  /** 結んだ取り置きがある：その取り置きの「入れる」を開くだけ */
+  | { kind: "existing"; reserve: Reserve }
+  /** 結んだ取り置きがない：名前＝予定の名前・目標額＝予定の金額・使う月＝予定の月で作って結ぶ（そのあと「入れる」を開く） */
+  | { kind: "create"; reserve: Reserve; planned: PlannedExpense };
+
+/** 「この予定のために取っておく」の計画 */
+export function planSetAside(p: PlannedExpense, reserves: readonly Reserve[], base: Base): SetAsidePlan {
+  const linked = linkedOpenReserve(p, reserves);
+  if (linked) return { kind: "existing", reserve: linked };
+  const reserve: Reserve = { ...base, name: reserveNameForPlanned(p, reserves), targetAmount: p.amount, targetMonth: p.month };
+  return { kind: "create", reserve, planned: { ...p, reserveId: reserve.id } };
 }

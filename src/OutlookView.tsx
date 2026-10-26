@@ -1,15 +1,16 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { calcUsable } from "./budgetLogic";
+import { calcUsable, isFirstUse } from "./budgetLogic";
 import { useBudgetBundle } from "./budgetStore";
 import { Fab } from "./Fab";
 import { Icon } from "./Icon";
 import { formatYen } from "./money";
-import { buildOutlook, periodLabel } from "./outlookLogic";
+import { OUTLOOK_LENGTHS, buildOutlook, periodLabel, summarizeOutlook } from "./outlookLogic";
 import type { OutlookColumn, OutlookMonths } from "./outlookLogic";
 import { PlannedView } from "./PlannedView";
 import { PREF_OUTLOOK_MONTHS, readPref, writePref } from "./localPrefs";
-import { ReserveRows, ReservesView } from "./ReservesView";
+import { RESERVE_INTRO, ReserveRows, ReservesView } from "./ReservesView";
+import { plannedNotesByReserve } from "./plannedLogic";
 import { ReserveEditor } from "./ReserveEditor";
 import { reserveBalances, splitReserves, totalReserveBalance } from "./reserveLogic";
 import { useToast } from "./Toast";
@@ -26,7 +27,8 @@ interface Props {
 }
 
 function readMonths(): OutlookMonths {
-  return readPref(PREF_OUTLOOK_MONTHS) === "6" ? 6 : 3;
+  const v = readPref(PREF_OUTLOOK_MONTHS);
+  return v === "6" ? 6 : v === "12" ? 12 : 3;
 }
 
 /** 金額の符号つき表示：＋12,000円 / −3,000円 */
@@ -47,7 +49,10 @@ export function OutlookView({ tabBar, today, version, settings, onOpenSettings, 
     onChanged();
   };
 
-  const outlook = useMemo(() => (bundle ? buildOutlook(bundle, settings, today, months) : null), [bundle, settings, today, months]);
+  const firstUse = bundle ? isFirstUse(bundle) : false;
+  const outlook = useMemo(() => (bundle && !isFirstUse(bundle) ? buildOutlook(bundle, settings, today, months) : null), [bundle, settings, today, months]);
+  const summary = useMemo(() => (outlook ? summarizeOutlook(outlook.columns) : null), [outlook]);
+  const plannedNotes = useMemo(() => plannedNotesByReserve(bundle?.plannedExpenses ?? []), [bundle]);
   const usableNow = useMemo(() => (bundle ? calcUsable(bundle, settings, today).usable : null), [bundle, settings, today]);
   const balances = useMemo(() => reserveBalances(bundle?.reserveMoves ?? []), [bundle]);
   const reserveSplit = useMemo(() => splitReserves(bundle?.reserves ?? []), [bundle]);
@@ -87,12 +92,40 @@ export function OutlookView({ tabBar, today, version, settings, onOpenSettings, 
           </p>
         )}
         <div className="segmented" role="group" aria-label="見通しの長さ">
-          {([3, 6] as const).map((m) => (
+          {OUTLOOK_LENGTHS.map((m) => (
             <button key={m} type="button" className={`seg${months === m ? " on" : ""}`} aria-pressed={months === m} onClick={() => changeMonths(m)}>
-              {m}か月
+              {m === 12 ? "1年" : `${m}か月`}
             </button>
           ))}
         </div>
+
+        {firstUse && (
+          <section className="card outlook-card" aria-label="給料日ごとの見通し">
+            <p className="empty-note small">資産と明細を入れると、先の見通しが出ます。</p>
+          </section>
+        )}
+
+        {outlook && summary && (
+          <section className="card outlook-summary" aria-label="見通しのまとめ">
+            <h2 className="outlook-summary-title">{months === 12 ? "1年" : `${months}か月`}のまとめ</h2>
+            <dl className="rows">
+              <div className="row">
+                <dt>収入 − 出費の合計</dt>
+                <dd className={summary.net < 0 ? "caution" : undefined}>{signed(summary.net)}</dd>
+              </div>
+              {summary.lowest && (
+                <div className="row">
+                  <dt>{periodLabel(summary.lowest.start, summary.lowest.end)} が一番低い</dt>
+                  <dd className={summary.lowest.closing < settings.defenseFund ? "caution" : undefined}>{formatYen(summary.lowest.closing)}</dd>
+                </div>
+              )}
+              <div className="row">
+                <dt>生活防衛資金を下回る区切り</dt>
+                <dd className={summary.belowCount > 0 ? "caution" : undefined}>{summary.belowCount}個</dd>
+              </div>
+            </dl>
+          </section>
+        )}
 
         {outlook && (
           <section className="card outlook-card" aria-label="給料日ごとの見通し">
@@ -104,10 +137,11 @@ export function OutlookView({ tabBar, today, version, settings, onOpenSettings, 
               {outlook.averagedPeriods === 0 ? "（まだ数えられる区切りがないので「—」。0円として計算しています）" : ""}。今の区切りは、平均から今の区切りでもう使った分（{formatYen(outlook.currentSpent)}）を引いた残りで数えています。
               給料の見込みは、給料明細のひな形の手取り（前回の金額）です。
             </p>
+            <p className="field-hint outlook-note">3か月より先は、予定出費・年1回や半年ごとの繰り返し・賞与を入れると違いが出ます。</p>
           </section>
         )}
 
-        {bundle && <PlannedView bundle={bundle} today={today} onChanged={changed} showToast={showToast} />}
+        {bundle && <PlannedView bundle={bundle} today={today} usable={usableNow} onChanged={changed} showToast={showToast} />}
 
         {bundle && (
           <section className="card list-card outlook-section" aria-label="取り置き">
@@ -117,10 +151,11 @@ export function OutlookView({ tabBar, today, version, settings, onOpenSettings, 
                 追加
               </button>
             </h2>
+            <p className="field-hint list-intro">{RESERVE_INTRO}</p>
             {reserveSplit.open.length === 0 ? (
               <p className="empty-note small">取り置きはまだありません。先の出費のために、使える額から外しておくお金です。</p>
             ) : (
-              <ReserveRows reserves={reserveSplit.open} balances={balances} onOpen={(id) => setPage({ openId: id, adding: false })} />
+              <ReserveRows reserves={reserveSplit.open} balances={balances} plannedNotes={plannedNotes} onOpen={(id) => setPage({ openId: id, adding: false })} />
             )}
             {(reserveSplit.closed.length > 0 || reserveSplit.open.length > 0) && (
               <div className="more-row">

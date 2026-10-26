@@ -7,7 +7,14 @@ import type { Base, Category, HolidayShift, Id, Payroll, PayrollLine, Tag, Trans
 
 export type PayrollLineKind = PayrollLine["kind"];
 
-export const PAYROLL_KIND_LABELS: Record<PayrollLineKind, string> = { pay: "支給", deduction: "控除", settlement: "精算" };
+// 画面に出す名前。内部の種類（settlement）は変えない（バックアップの形に関わるため）
+export const PAYROLL_KIND_LABELS: Record<PayrollLineKind, string> = { pay: "支給", deduction: "控除", settlement: "天引きで払う後払い" };
+/** 天引きで払う後払いの行の説明（ひな形・毎月の入力で、見出しの下に出す） */
+export const SETTLEMENT_NOTE = "社員証で先に使った社員食堂などの代金を、給料から天引きで払う分。社員証の残高が戻ります（支出には数えません）";
+/** 行を足すボタンの文字 */
+export function addLineLabel(kind: PayrollLineKind): string {
+  return kind === "settlement" ? "＋ 天引きで払う後払いを追加" : `＋ ${PAYROLL_KIND_LABELS[kind]}の行を追加`;
+}
 export const PAYROLL_KINDS: readonly PayrollLineKind[] = ["pay", "deduction", "settlement"];
 
 // ---- ひな形 ----
@@ -29,14 +36,14 @@ export function validatePayroll(p: Pick<Payroll, "name" | "accountId" | "day" | 
   if (!p.accountId) return "入金する資産を選んでください";
   if (!Number.isInteger(p.day) || p.day < 1 || p.day > 31) return "支給日は1〜31日で入れてください";
   for (const l of p.lines) {
-    const what = `${PAYROLL_KIND_LABELS[l.kind]}の行`;
+    const what = l.kind === "settlement" ? PAYROLL_KIND_LABELS[l.kind] : `${PAYROLL_KIND_LABELS[l.kind]}の行`;
     if (l.kind === "settlement" ? !l.accountId : !l.categoryId) return `${what}の${l.kind === "settlement" ? "資産" : "分類"}を選んでください`;
     if (!isYen(l.amount) || l.amount < 0 || l.amount > MAX_AMOUNT) return `${what}の金額を0円以上の整数で入れてください`;
   }
   return null;
 }
 
-/** 同じ種類（支給・控除・精算）の隣の行と入れ替える。動かせないときは null */
+/** 同じ種類（支給・控除・天引きで払う後払い）の隣の行と入れ替える。動かせないときは null */
 export function moveLine(lines: readonly PayrollLine[], lineId: Id, direction: "up" | "down"): PayrollLine[] | null {
   const from = lines.findIndex((l) => l.lineId === lineId);
   if (from < 0) return null;
@@ -63,7 +70,7 @@ export interface PayrollTotals {
   takeHome: number;
 }
 
-/** 支給 − 控除 − 精算 ＝ 手取り（enabled が false の行は数えない） */
+/** 支給 − 控除 − 天引きで払う後払い ＝ 手取り（enabled が false の行は数えない） */
 export function payrollTotals(lines: ReadonlyArray<{ kind: PayrollLineKind; amount: number; enabled?: boolean }>): PayrollTotals {
   const t = { pay: 0, deduction: 0, settlement: 0 };
   for (const l of lines) {
@@ -220,7 +227,7 @@ export interface PayrollSavePlan {
 }
 
 /**
- * 保存の計画：支給の行→収入、控除の行→支出、精算の行→振替。金額0の行・チェックを外した行は作らない。
+ * 保存の計画：支給の行→収入、控除の行→支出、天引きで払う後払いの行→振替。金額0の行・チェックを外した行は作らない。
  * 直すとき（existing に今ある明細）は、変更→更新、足した行→作成、消した行・0円にした行→論理削除の差分を返す。
  */
 export function planPayrollSave(args: {

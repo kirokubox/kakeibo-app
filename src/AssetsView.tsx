@@ -244,7 +244,7 @@ export function AssetsView({ tabBar, today, version, onOpenSettings, onEdit, onO
         {accounts === null && !loadError && <p className="muted">読み込んでいます…</p>}
         {accounts !== null && active.length === 0 && (
           <section className="card">
-            <p>資産はまだありません。らくな家計簿からの取り込み（段階7）で入ります。新しく足すときは右上の︙から追加します。</p>
+            <p>資産はまだありません。右上の︙の「追加」から足せます。ほかの家計簿のデータやバックアップがあれば、設定の「バックアップから追加」から読み込めます。</p>
           </section>
         )}
         {active.length > 0 && (

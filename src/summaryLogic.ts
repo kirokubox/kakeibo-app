@@ -6,7 +6,7 @@ import type { DateSpan } from "./budgetLogic.js";
 import { addDays } from "./dateUtils.js";
 import { addMonths, countedExpense, countedIncome, inRange, monthKeyOf, monthRange, weekRange } from "./periodLogic.js";
 import type { AppliedReturns, DateRange } from "./periodLogic.js";
-import type { Account, BudgetSnapshot, Category, CategoryKind, Id, Tag, Transaction } from "./types.js";
+import type { Account, BudgetSnapshot, Category, CategoryKind, Id, Tag, Transaction, WeekStart } from "./types.js";
 
 // ---- 期間（週・月・年・任意） ----
 
@@ -14,15 +14,15 @@ export type SummaryPeriodKind = "week" | "month" | "year" | "custom";
 
 export interface SummaryPeriod {
   kind: SummaryPeriodKind;
-  /** week：その週の月曜／month：その月の1日／year：その年の1月1日。custom では使わない */
+  /** week：その週の初日（設定の週の始まりの曜日）／month：その月の1日／year：その年の1月1日。custom では使わない */
   anchor: string;
   customStart: string;
   customEnd: string;
 }
 
 /** 期間の日付の範囲。月・年は暦月・暦年（予算の区切りの設定に関係ない）。任意は開始と終了が逆でも正しい向きにする */
-export function summaryRange(p: SummaryPeriod): DateRange {
-  if (p.kind === "week") return weekRange(p.anchor);
+export function summaryRange(p: SummaryPeriod, weekStart: WeekStart = "monday"): DateRange {
+  if (p.kind === "week") return weekRange(p.anchor, weekStart);
   if (p.kind === "month") return monthRange(p.anchor.slice(0, 7));
   if (p.kind === "year") {
     const y = p.anchor.slice(0, 4);
@@ -44,15 +44,15 @@ export function shiftSummaryPeriod(p: SummaryPeriod, n: number): SummaryPeriod {
 }
 
 /** 期間の種類を切り替えるときの基準の日：今の期間に今日が入っていれば今日、なければ今の期間の初め */
-export function switchDay(p: SummaryPeriod, today: string): string {
-  const r = summaryRange(p);
+export function switchDay(p: SummaryPeriod, today: string, weekStart: WeekStart = "monday"): string {
+  const r = summaryRange(p, weekStart);
   return inRange(today, r) ? today : r.start;
 }
 
 /** 期間の切り替え：同じ日を含む週・月・年に合わせる。任意は前の任意の範囲（なければ今月初めから今日） */
-export function periodAround(kind: SummaryPeriodKind, day: string, prev?: SummaryPeriod): SummaryPeriod {
+export function periodAround(kind: SummaryPeriodKind, day: string, prev?: SummaryPeriod, weekStart: WeekStart = "monday"): SummaryPeriod {
   const custom = { customStart: prev?.customStart ?? monthRange(day.slice(0, 7)).start, customEnd: prev?.customEnd ?? day };
-  if (kind === "week") return { kind, anchor: weekRange(day).start, ...custom };
+  if (kind === "week") return { kind, anchor: weekRange(day, weekStart).start, ...custom };
   if (kind === "month") return { kind, anchor: `${day.slice(0, 7)}-01`, ...custom };
   if (kind === "year") return { kind, anchor: `${day.slice(0, 4)}-01-01`, ...custom };
   return { kind, anchor: day, ...custom };
@@ -284,13 +284,19 @@ export interface BudgetBar {
   spent: number;
 }
 
-/** 直近 n 週の予算と実績（今日を含む週まで）。使った額は変動費（ホームと同じ数え方） */
-export function weekBudgetBars(snapshots: readonly BudgetSnapshot[], txs: readonly Transaction[], today: string, spendByTx: ReadonlyMap<Id, number>, n = 12): BudgetBar[] {
+/**
+ * 直近 n 週の予算と実績（今日を含む週まで）。使った額は変動費（ホームと同じ数え方）。
+ * 週は設定の週の始まりで数える。予算の記録は、その週の初日から6日以内に始まるものを使う
+ * （週の始まりを切り替えた前後は、記録の期間が7日と違うことがあるため。期間は記録のものをそのまま使う）
+ */
+export function weekBudgetBars(snapshots: readonly BudgetSnapshot[], txs: readonly Transaction[], today: string, spendByTx: ReadonlyMap<Id, number>, n = 12, weekStart: WeekStart = "monday"): BudgetBar[] {
   const active = txs.filter((t) => t.deletedAt === null);
-  const lastMonday = weekRange(today).start;
+  const lastFirst = weekRange(today, weekStart).start;
+  const weekSnaps = snapshots.filter((s) => s.deletedAt === null && s.period === "week").sort((a, b) => a.start.localeCompare(b.start) || a.createdAt.localeCompare(b.createdAt));
   return Array.from({ length: n }, (_, i) => {
-    const start = addDays(lastMonday, 7 * (i - (n - 1)));
-    const snap = snapshots.find((s) => s.deletedAt === null && s.period === "week" && s.start === start);
+    const start = addDays(lastFirst, 7 * (i - (n - 1)));
+    const lastDay = addDays(start, 6);
+    const snap = weekSnaps.find((s) => s.start >= start && s.start <= lastDay);
     const span: DateSpan = snap ? { start: snap.start, end: snap.end } : { start, end: addDays(start, 6) };
     const [, m, d] = start.split("-").map(Number);
     return { label: `${m}/${d}`, start: span.start, end: span.end, budget: snap ? snap.amount : null, spent: variableSpent(active, span, spendByTx) };

@@ -1,20 +1,23 @@
+import { weekdayHeads } from "./periodLogic";
 import type { CalendarCell } from "./periodLogic";
+import type { WeekStart } from "./types";
 
 interface Props {
   cells: CalendarCell[];
+  /** 週の始まり（見出しの並び） */
+  weekStart?: WeekStart;
   today: string;
   selected: string;
   onSelect: (date: string) => void;
 }
 
-const HEAD = ["月", "火", "水", "木", "金", "土", "日"];
-
-/** 月のカレンダー（月曜始まり）。各日に収入（青）と支出（赤） */
-export function CalendarMonth({ cells, today, selected, onSelect }: Props) {
+/** 月のカレンダー（週の始まりは設定の月曜か日曜）。各日に収入（青）と支出（赤） */
+export function CalendarMonth({ cells, weekStart = "monday", today, selected, onSelect }: Props) {
+  const heads = weekdayHeads(weekStart);
   return (
     <div className="calendar" role="grid" aria-label="日別のカレンダー">
-      {HEAD.map((h, i) => (
-        <div key={h} className={`cal-head${i === 5 ? " sat" : i === 6 ? " sun" : ""}`} role="columnheader">
+      {heads.map((h) => (
+        <div key={h} className={`cal-head${h === "土" ? " sat" : h === "日" ? " sun" : ""}`} role="columnheader">
           {h}
         </div>
       ))}

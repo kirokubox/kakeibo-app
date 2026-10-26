@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmSheet } from "./BottomSheet";
+import { todayKey } from "./dateUtils";
 import { categoryNames, favoriteProblems, isFavoriteCallable } from "./entryLogic";
+import { EntryView } from "./EntryView";
+import type { EntryMode } from "./EntryView";
 import { Icon } from "./Icon";
 import { KebabMenu } from "./KebabMenu";
 import { formatYen } from "./money";
@@ -10,25 +13,30 @@ import type { ShowToast } from "./Toast";
 import type { Account, Category, Favorite, TransactionTemplate } from "./types";
 
 interface Props {
-  accounts: Account[];
-  categories: Category[];
-  onPick: (template: TransactionTemplate) => void;
+  /** 押した行を入力画面に呼び出す（入力画面の★から開いたとき）。なければ、押した行は編集になる（設定から開いたとき） */
+  onPick?: (template: TransactionTemplate) => void;
   onClose: () => void;
   showToast: ShowToast;
 }
 
 const TYPE_LABELS = { income: "収入", expense: "支出", transfer: "振替", adjustment: "残高修正" } as const;
 
-/** よく使う入力の一覧。1タップで入力画面に呼び出す */
-export function FavoritesView({ accounts, categories, onPick, onClose, showToast }: Props) {
+/** よく使う入力の一覧。1タップで入力画面に呼び出す。右上の「追加」で足し、︙の「編集」でひな形を直す */
+export function FavoritesView({ onPick, onClose, showToast }: Props) {
   const [items, setItems] = useState<Favorite[] | null>(null);
-  const [mode, setMode] = useState<"normal" | "reorder" | "delete">("normal");
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [mode, setMode] = useState<"normal" | "reorder" | "delete" | "edit">("normal");
+  /** 追加・編集の入力画面 */
+  const [entry, setEntry] = useState<EntryMode | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const all = await getAll("favorites");
+      const [all, a, c] = await Promise.all([getAll("favorites"), getAll("accounts"), getAll("categories")]);
+      setAccounts(a);
+      setCategories(c);
       setItems(all.filter((f) => f.deletedAt === null).sort(byOrder));
     } catch (e) {
       setItems([]);
@@ -69,6 +77,7 @@ export function FavoritesView({ accounts, categories, onPick, onClose, showToast
   };
 
   const menu = [
+    { label: "編集", onSelect: () => setMode("edit") },
     { label: "並べ替え", onSelect: () => setMode("reorder") },
     { label: "削除", onSelect: () => setMode("delete"), danger: true },
   ];
@@ -81,7 +90,12 @@ export function FavoritesView({ accounts, categories, onPick, onClose, showToast
         </button>
         <h1 className="topbar-title">よく使う入力</h1>
         {mode === "normal" ? (
-          <KebabMenu items={menu} />
+          <>
+            <button type="button" className="text-btn" onClick={() => setEntry({ kind: "favoriteNew" })}>
+              追加
+            </button>
+            <KebabMenu items={menu} />
+          </>
         ) : (
           <button type="button" className="text-btn" onClick={() => setMode("normal")}>
             完了
@@ -91,7 +105,7 @@ export function FavoritesView({ accounts, categories, onPick, onClose, showToast
       <main className="content">
         {items !== null && list.length === 0 && (
           <section className="card">
-            <p>よく使う入力はまだありません。入力画面の右上の︙から「よく使う入力に登録」で足せます。</p>
+            <p>よく使う入力はまだありません。右上の「追加」から足せます。入力画面の右上の︙から「よく使う入力に登録」でも足せます。</p>
           </section>
         )}
         {list.length > 0 && (
@@ -134,6 +148,16 @@ export function FavoritesView({ accounts, categories, onPick, onClose, showToast
                     </li>
                   );
                 }
+                if (mode === "edit" || (mode === "normal" && !onPick)) {
+                  return (
+                    <li key={f.id}>
+                      <button type="button" className="list-row" onClick={() => setEntry({ kind: "favoriteEdit", fav: f })}>
+                        {body}
+                        <Icon name="chevron-right" size={18} />
+                      </button>
+                    </li>
+                  );
+                }
                 if (mode === "delete") {
                   return (
                     <li key={f.id} className="list-row static">
@@ -146,7 +170,7 @@ export function FavoritesView({ accounts, categories, onPick, onClose, showToast
                 }
                 return (
                   <li key={f.id}>
-                    <button type="button" className={`list-row${callable ? "" : " dim"}`} disabled={!callable} onClick={() => onPick(t)}>
+                    <button type="button" className={`list-row${callable ? "" : " dim"}`} disabled={!callable} onClick={() => onPick?.(t)}>
                       {body}
                     </button>
                   </li>
@@ -156,7 +180,20 @@ export function FavoritesView({ accounts, categories, onPick, onClose, showToast
           </section>
         )}
         {list.some((f) => !isFavoriteCallable(f.template)) && <p className="muted small">薄く表示しているものは、呼び出せません。</p>}
+        {mode === "edit" && <p className="muted small">直したい行を押すと、ひな形を編集できます。</p>}
       </main>
+      {entry && (
+        <div className="screen-overlay">
+          <EntryView
+            key={entry.kind === "favoriteEdit" ? `fav-${entry.fav.id}` : "fav-new"}
+            mode={entry}
+            today={todayKey()}
+            showToast={showToast}
+            onChanged={() => void load()}
+            onClose={() => setEntry(null)}
+          />
+        </div>
+      )}
       {confirmId && (
         <ConfirmSheet
           title="よく使う入力を削除しますか"

@@ -1,7 +1,7 @@
-// 期間（暦月・月曜始まりの週）と、明細の集計（画面から切り離した純粋なロジック）
+// 期間（暦月・週。週の始まりは設定で月曜か日曜）と、明細の集計（画面から切り離した純粋なロジック）
 import { addDays, weekdayOf } from "./dateUtils.js";
 import { reimbAmountOf } from "./reimburseLogic.js";
-import type { Id, Transaction } from "./types.js";
+import type { Id, Transaction, WeekStart } from "./types.js";
 
 /** 返金（収入）のid → 立替に充てた額。期間の合計から除く（reimburseLogic の computeAllocation の applied） */
 export type AppliedReturns = ReadonlyMap<Id, number>;
@@ -20,6 +20,8 @@ export interface DateRange {
   start: string; // YYYY-MM-DD（含む）
   end: string; // YYYY-MM-DD（含む）
 }
+
+const WEEKDAY_SHORT = ["日", "月", "火", "水", "木", "金", "土"];
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
@@ -49,16 +51,22 @@ export function monthRange(month: string): DateRange {
   return { start: `${month}-01`, end: `${year}-${pad(m)}-${pad(last)}` };
 }
 
-/** その日を含む週の月曜日 */
-export function weekStartOf(date: string): string {
+/** その日を含む週の初日（月曜始まりなら月曜日、日曜始まりなら日曜日） */
+export function weekStartOf(date: string, weekStart: WeekStart = "monday"): string {
   const wd = weekdayOf(date); // 0=日
-  return addDays(date, -((wd + 6) % 7));
+  return addDays(date, -(weekStart === "sunday" ? wd : (wd + 6) % 7));
 }
 
-/** その日を含む週（月曜〜日曜） */
-export function weekRange(date: string): DateRange {
-  const start = weekStartOf(date);
+/** その日を含む週（月曜〜日曜、または日曜〜土曜） */
+export function weekRange(date: string, weekStart: WeekStart = "monday"): DateRange {
+  const start = weekStartOf(date, weekStart);
   return { start, end: addDays(start, 6) };
+}
+
+/** カレンダーの曜日の見出し（週の初日から） */
+export function weekdayHeads(weekStart: WeekStart = "monday"): string[] {
+  const order = weekStart === "sunday" ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0];
+  return order.map((i) => WEEKDAY_SHORT[i]);
 }
 
 export function inRange(date: string, range: DateRange): boolean {
@@ -119,11 +127,11 @@ export interface CalendarCell {
   hasItems: boolean;
 }
 
-/** 月のカレンダーのマス（月曜始まり。前後の月の日も入れる）。4〜6週分 */
-export function calendarCells(month: string, transactions: readonly Transaction[], applied?: AppliedReturns): CalendarCell[] {
+/** 月のカレンダーのマス（週の初日から。前後の月の日も入れる）。4〜6週分 */
+export function calendarCells(month: string, transactions: readonly Transaction[], applied?: AppliedReturns, weekStart: WeekStart = "monday"): CalendarCell[] {
   const range = monthRange(month);
-  const first = weekStartOf(range.start);
-  const lastWeekStart = weekStartOf(range.end);
+  const first = weekStartOf(range.start, weekStart);
+  const lastWeekStart = weekStartOf(range.end, weekStart);
   const end = addDays(lastWeekStart, 6);
   const byDate = new Map<string, DayGroup>();
   for (const g of groupByDay(transactions, undefined, applied)) byDate.set(g.date, g);
@@ -135,7 +143,7 @@ export function calendarCells(month: string, transactions: readonly Transaction[
   return cells;
 }
 
-/** 週の7日分の支出（月曜から）。棒グラフ用 */
+/** 週の7日分の支出（週の初日から）。棒グラフ用 */
 export function weekExpenseBars(transactions: readonly Transaction[], weekStart: string, applied?: AppliedReturns): Array<{ date: string; expense: number }> {
   const days = groupByDay(transactions, undefined, applied);
   const byDate = new Map(days.map((g) => [g.date, g.expense]));
@@ -145,7 +153,6 @@ export function weekExpenseBars(transactions: readonly Transaction[], weekStart:
   });
 }
 
-const WEEKDAY_SHORT = ["日", "月", "火", "水", "木", "金", "土"];
 const WEEKDAY_LONG = ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"];
 
 export function weekdayShort(date: string): string {
@@ -164,7 +171,7 @@ export function shortDate(date: string): string {
   return `${m}/${d}(${weekdayShort(date)})`;
 }
 
-/** 週の見出し：10/19(月)〜10/25(日) */
+/** 週の見出し：10/19(月)〜10/25(日)（週の初日から数えた7日。初日は月曜でも日曜でもよい） */
 export function weekTitle(weekStart: string): string {
   return `${shortDate(weekStart)}〜${shortDate(addDays(weekStart, 6))}`;
 }

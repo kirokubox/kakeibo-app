@@ -9,7 +9,7 @@ import type { PayrollLineKind, PayrollTotals } from "./payrollLogic";
 import type { Account, Category, Id } from "./types";
 import { YenInput } from "./YenInput";
 
-/** 行の行き先（支給・控除＝分類、精算＝資産）を選ぶパネル */
+/** 行の行き先（支給・控除＝分類、天引きで払う後払い＝資産）を選ぶパネル */
 export function TargetPanel({
   kind,
   currentId,
@@ -23,7 +23,7 @@ export function TargetPanel({
   currentId: Id | null;
   accounts: readonly Account[];
   categories: readonly Category[];
-  /** 精算では、入金する資産（給料が入る資産）は選べないようにする */
+  /** 天引きで払う後払いでは、入金する資産（給料が入る資産）は選べないようにする */
   payAccountId: Id | null;
   onPick: (id: Id) => void;
   onClose: () => void;
@@ -31,7 +31,7 @@ export function TargetPanel({
   if (kind === "settlement") {
     return (
       <AccountPanel
-        title="精算する資産"
+        title="後払いの資産（社員証など）"
         accounts={selectableAccounts(accounts, currentId)}
         selectedId={currentId}
         lastUsedId={null}
@@ -88,11 +88,11 @@ export function PayrollLineRow({ kind, targetName, label, amount, leading, trail
   );
 }
 
-/** 画面の下の「支給 計 − 控除 計 − 精算 計 ＝ 手取り」 */
+/** 画面の下の「支給 計 − 控除 計 − 後払い 計 ＝ 手取り」 */
 export function TakeHome({ totals }: { totals: PayrollTotals }) {
   return (
     <div className="take-home" aria-live="polite">
-      支給 計 {formatYen(totals.pay)} − 控除 計 {formatYen(totals.deduction)} − 精算 計 {formatYen(totals.settlement)} ＝ 手取り
+      支給 計 {formatYen(totals.pay)} − 控除 計 {formatYen(totals.deduction)} − 天引き後払い 計 {formatYen(totals.settlement)} ＝ 手取り
       <strong className={totals.takeHome < 0 ? "neg" : undefined}>{formatYen(totals.takeHome)}</strong>
     </div>
   );

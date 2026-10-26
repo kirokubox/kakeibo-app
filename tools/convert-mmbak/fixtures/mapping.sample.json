@@ -1,9 +1,12 @@
 {
- "_説明": "テストと書き方の見本用の架空の付け替え表。実データの名前・店名は入っていない。実際の表は個人データなのでリポジトリに置かない（17_家計簿/80_取り込み/mapping.json）。",
+ "_説明": "テストと書き方の見本用の架空の付け替え表。付け替え先は、テストの中で作る架空の本人用の初期データ（test_convert.py の TEST_OLD_SEED）の分類。実データの名前・店名は入っていない。実際の表は個人データなのでリポジトリに置かない（17_家計簿/80_取り込み/mapping.json）。",
  "importFrom": "2022-03-01",
  "cardHolidayShift": "after",
  "recurringHolidayShift": "none",
- "fallback": { "expense": "特別費/その他", "income": "一時収入/その他" },
+ "fallback": {
+  "expense": "特別/その他",
+  "income": "一時収入/その他"
+ },
  "assetGroups": {
   "現金": "cash",
   "銀行": "bank",
@@ -13,33 +16,69 @@
   "その他": "other"
  },
  "assets": {
-  "テスト証券": { "includeInUsable": false },
-  "テスト非表示": { "hidden": true }
+  "テスト証券": {
+   "includeInUsable": false
+  },
+  "テスト非表示": {
+   "hidden": true
+  }
  },
  "repeatTypes": {
-  "1": { "every": "month" },
-  "8": { "every": "month", "day": "last" },
-  "16": { "every": "nMonths", "n": 6 },
-  "17": { "every": "year" }
+  "1": {
+   "every": "month"
+  },
+  "8": {
+   "every": "month",
+   "day": "last"
+  },
+  "16": {
+   "every": "nMonths",
+   "n": 6
+  },
+  "17": {
+   "every": "year"
+  }
  },
- "skipRecurringPayees": ["テスト会社"],
- "skipRecurringCategoryTops": ["給与"],
+ "skipRecurringPayees": [
+  "テスト会社"
+ ],
+ "skipRecurringCategoryTops": [
+  "給与"
+ ],
  "expense": {
-  "食費/自炊": "食費/ごはん",
+  "食費/自炊": "食費/テスト自炊",
   "食費/外食": "食費/外食",
   "食費/コンビニ": {
-   "to": "食費/ごはん",
+   "to": "食費/テスト自炊",
    "review": true,
-   "rules": [{ "contains": ["テストおやつ店"], "to": "食費/おやつ" }]
+   "rules": [
+    {
+     "contains": [
+      "テストおやつ店"
+     ],
+     "to": "食費/テストおやつ"
+    }
+   ]
   },
-  "食費": { "to": "食費/ごはん", "review": true },
+  "食費": {
+   "to": "食費/テスト自炊",
+   "review": true
+  },
   "交通費/電車": {
-   "to": "交通費/公共交通",
+   "to": "交通/テスト電車",
    "review": true,
-   "rules": [{ "contains": ["LUUP", "ルーフ"], "to": "交通費/LUUP" }]
+   "rules": [
+    {
+     "contains": [
+      "テスト乗り物",
+      "テストのりもの"
+     ],
+     "to": "交通/テスト乗り物"
+    }
+   ]
   },
-  "手数料": "特別費/その他",
-  "旧特別費/病院": "生活費/病院・薬"
+  "手数料": "特別/その他",
+  "旧特別費/病院": "生活/病院・薬"
  },
  "income": {
   "給与/給与": "給与/給与",

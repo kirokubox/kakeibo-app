@@ -360,6 +360,14 @@ function checkSource(s: unknown): string | null {
   return first(reqStr(s, "type", at), reqStr(s, "label", at), optStr("fileName"), optStr("convertedAt"), optStr("importFrom"));
 }
 
+/** 本人用の初期データの印（任意）。あれば label は文字列、createdAt は時刻つきの日時 */
+function checkProfile(p: unknown): string | null {
+  if (p === undefined) return null;
+  if (!isRecord(p)) return "profile がオブジェクトではありません";
+  const at = "profile";
+  return first(reqStr(p, "label", at), isIsoDateTime(p.createdAt) ? null : `${at}.createdAt が時刻つきの日時ではありません`);
+}
+
 function checkSettings(s: unknown): string | null {
   if (!isRecord(s)) return "settings がオブジェクトではありません";
   const at = "settings";
@@ -369,7 +377,7 @@ function checkSettings(s: unknown): string | null {
     reqYen(s, "defenseFund", at),
     reqEnum(s, "budgetMonthBoundary", ["payday", "calendar"], at),
     reqEnum(s, "homeMainFigure", ["remaining", "spent"], at),
-    reqEnum(s, "weekStart", ["monday"], at),
+    reqEnum(s, "weekStart", ["monday", "sunday"], at),
     Number.isSafeInteger(s.backupReminderDays) && (s.backupReminderDays as number) >= 0 ? null : `${at}.backupReminderDays が 0 以上の整数ではありません`,
     s.lastBackupAt === null || isIsoDateTime(s.lastBackupAt) ? null : `${at}.lastBackupAt が null または時刻つきの日時ではありません`,
   );
@@ -390,6 +398,8 @@ export function validateBackup(input: unknown): ValidationResult {
   if (data.subscriptionReviews === undefined) data = { ...data, subscriptionReviews: [] };
   const sourceProblem = checkSource(data.source);
   if (sourceProblem !== null) return fail(sourceProblem);
+  const profileProblem = checkProfile(data.profile);
+  if (profileProblem !== null) return fail(profileProblem);
 
   for (const store of DATA_STORE_NAMES) {
     const list = data[store];

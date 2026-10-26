@@ -29,7 +29,7 @@ function dateWithYear(d: string): string {
   return `${d.slice(0, 4)}/${formatMonthDayWeekday(d)}`;
 }
 
-/** サブスク見直し：固定費＞サブスクの一覧で、3か月に1回「続ける／やめる」を記録する */
+/** サブスク見直し：サブスクの分類の一覧で、3か月に1回「続ける／やめる」を記録する */
 export function SubscriptionView({ transactions, reviews, today, showToast, onChanged }: Props) {
   const [busy, setBusy] = useState(false);
   const summaries = useMemo(() => summarizeSubscriptions(transactions), [transactions]);
@@ -58,12 +58,12 @@ export function SubscriptionView({ transactions, reviews, today, showToast, onCh
     <section className="card summary-section" aria-label="サブスク見直し">
       <h2>サブスク見直し</h2>
       <p className="muted small">
-        固定費＞サブスクの支出を、内容ごとにまとめています。{REVIEW_INTERVAL_DAYS}日（3か月）に1回、続けるかやめるかを記録します。
+        サブスクの分類の支出を、内容ごとにまとめています。{REVIEW_INTERVAL_DAYS}日（3か月）に1回、続けるかやめるかを記録します。
         {last ? `最後の見直し：${dateWithYear(last)}。` : "まだ見直していません。"}
       </p>
       {due && <p className="payroll-note review-due">サブスクを見直す時期です</p>}
       {summaries.length === 0 ? (
-        <p className="empty-note">固定費＞サブスクの明細はまだありません。</p>
+        <p className="empty-note">サブスクの分類の明細はまだありません。</p>
       ) : (
         <>
           <p className="field-hint">毎月続いているものの合計の目安：{formatYen(monthly)}（やめると記録したものは除く）</p>
