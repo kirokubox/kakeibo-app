@@ -253,8 +253,8 @@ class TestTransactions(ConvertTestBase):
     def test_adjustment_signs(self):
         r = self.run_convert()
         txs = self.by_id(r, "transactions")
-        self.assertEqual(txs["mm-u21"]["amount"], -50)  # DO_TYPE 7 は減額
-        self.assertEqual(txs["mm-u22"]["amount"], 80)  # DO_TYPE 8 は増額
+        self.assertEqual(txs["mm-u21"]["amount"], 50)  # DO_TYPE 7 は増額
+        self.assertEqual(txs["mm-u22"]["amount"], -80)  # DO_TYPE 8 は減額
         self.assertEqual(txs["mm-u23"]["amount"], 25)  # 「差額」の収入
         self.assertEqual(txs["mm-u24"]["amount"], -35)  # 「差額」の支出
         for k in ("mm-u21", "mm-u22", "mm-u23", "mm-u24"):
@@ -308,7 +308,7 @@ class TestAccountsAndBalances(ConvertTestBase):
         r = self.run_convert()
         accs = self.by_id(r, "accounts")
         # 財布：初期1000 ＋ 10000 − 500 ＋ 2000（前の振替の入）− 100（前の残高修正）
-        self.assertEqual(accs["mm-asset-W"]["openingBalance"], 12400)
+        self.assertEqual(accs["mm-asset-W"]["openingBalance"], 12600)
         self.assertEqual(accs["mm-asset-B"]["openingBalance"], 48000)  # 50000 − 2000
         self.assertEqual(accs["mm-asset-C"]["openingBalance"], 0)
         self.assertEqual(accs["mm-asset-S"]["openingBalance"], 0)  # AMOUNT が空
@@ -319,10 +319,10 @@ class TestAccountsAndBalances(ConvertTestBase):
         self.assertEqual(len(recon), 4)
         for row in recon:
             self.assertEqual(row["diff"], 0, row["name"])
-        # 財布を手で確かめる：12400 −300−200−150−100−160−90+700 +5000 −100(手数料の別資産の支出) −50+80+25−35 −100(丸め行) −800 −120 −130
+        # 財布を手で確かめる：12600 −300−200−150−100−160−90+700 +5000 −100(手数料の別資産の支出) +50−80+25−35 −100(丸め行) −800 −120 −130
         wallet = next(x for x in recon if x["name"] == "テスト財布")
         self.assertEqual(wallet["app"], wallet["mm"])
-        self.assertEqual(wallet["app"], 12400 - 300 - 200 - 150 - 100 - 160 - 90 + 700 + 5000 - 100 - 50 + 80 + 25 - 35 - 100 - 800 - 120 - 130)
+        self.assertEqual(wallet["app"], 12600 - 300 - 200 - 150 - 100 - 160 - 90 + 700 + 5000 - 100 + 50 - 80 + 25 - 35 - 100 - 800 - 120 - 130)
         card = next(x for x in recon if x["name"] == "テストカード")
         self.assertEqual(card["app"], -4000)
 

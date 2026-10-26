@@ -300,7 +300,7 @@ def table_exists(con: sqlite3.Connection, name: str) -> bool:
 
 
 EFFECT_SQL = """
-CASE DO_TYPE WHEN '0' THEN 1 WHEN '1' THEN -1 WHEN '3' THEN -1 WHEN '4' THEN 1 WHEN '7' THEN -1 WHEN '8' THEN 1 ELSE 0 END
+CASE DO_TYPE WHEN '0' THEN 1 WHEN '1' THEN -1 WHEN '3' THEN -1 WHEN '4' THEN 1 WHEN '7' THEN 1 WHEN '8' THEN -1 ELSE 0 END
 """
 
 
@@ -499,7 +499,7 @@ def _convert(con: sqlite3.Connection, mapping: dict, now_iso: str, source_file_n
             transactions.append(tx)
         elif t in ("7", "8"):
             tx["type"] = "adjustment"
-            tx["amount"] = -amount if t == "7" else amount
+            tx["amount"] = amount if t == "7" else -amount  # 7＝増額、8＝減額（2026-10-26 らくな家計簿の資産画面と照合して確定）
             transactions.append(tx)
         else:
             anomalies.append(f"{r['WDATE']} 知らない種類（DO_TYPE={t}）の行を取り込みませんでした")
@@ -554,7 +554,7 @@ def _convert(con: sqlite3.Connection, mapping: dict, now_iso: str, source_file_n
     default_shift = mapping.get("cardHolidayShift", "after")
 
     # 初期残高：MM の初期残高 ＋ 取り込む明細に吸収されなかった「取り込み期間より前」の行の影響
-    effect_sign = {"0": 1, "1": -1, "3": -1, "4": 1, "7": -1, "8": 1}
+    effect_sign = {"0": 1, "1": -1, "3": -1, "4": 1, "7": 1, "8": -1}
     pre_effect: Counter = Counter()
     for r in rows:
         if r["id"] in consumed:
@@ -1108,7 +1108,7 @@ def validate_backup(data) -> str | None:
 # ---------------------------------------------------------------------------
 # レポート
 # ---------------------------------------------------------------------------
-TYPE_LABEL = {"0": "収入", "1": "支出", "3": "振替の出", "4": "振替の入", "7": "残高修正（減額）", "8": "残高修正（増額）"}
+TYPE_LABEL = {"0": "収入", "1": "支出", "3": "振替の出", "4": "振替の入", "7": "残高修正（増額）", "8": "残高修正（減額）"}
 
 
 def render_report(result: dict, mmbak_name: str, mmbak_exported: str, converted_at: str, mmbak_size: int, mmbak_sha: str, validation: str | None) -> str:
