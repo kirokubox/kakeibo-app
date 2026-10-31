@@ -2,6 +2,7 @@
 // ひな形（Payroll）の行を、毎月の明細（収入・支出・振替）にまとめて変換する。
 import { MAX_AMOUNT } from "./calculator.js";
 import { shiftedDateInMonth } from "./businessDay.js";
+import { addMonths } from "./dateUtils.js";
 import { isYen } from "./money.js";
 import type { Base, Category, HolidayShift, Id, Payroll, PayrollLine, Tag, Transaction } from "./types.js";
 
@@ -30,11 +31,57 @@ export function blankLine(kind: PayrollLineKind, lineId: Id): PayrollLine {
     : { lineId, kind, categoryId: "", label: "", amount: 0 };
 }
 
+// ---- 支給の周期（毎月／毎年◯月） ----
+
+/** 支給する月がそろっているか（1〜12の整数、重なりなし、1つ以上） */
+export function isValidPayMonths(months: unknown): months is number[] {
+  return (
+    Array.isArray(months) &&
+    months.length > 0 &&
+    months.every((m) => Number.isInteger(m) && m >= 1 && m <= 12) &&
+    new Set(months).size === months.length
+  );
+}
+
+/** 支給する月を小さい順にそろえる。12か月すべて＝毎月なので undefined（保存しない）にする */
+export function normalizePayMonths(months: readonly number[] | undefined): number[] | undefined {
+  if (!months) return undefined;
+  const sorted = [...new Set(months)].filter((m) => Number.isInteger(m) && m >= 1 && m <= 12).sort((a, b) => a - b);
+  return sorted.length === 0 || sorted.length === 12 ? undefined : sorted;
+}
+
+/** その月（YYYY-MM）が支給する月か。months が無ければ毎月 */
+export function isPayMonth(p: Pick<Payroll, "months">, ym: string): boolean {
+  if (!p.months || p.months.length === 0) return true;
+  return p.months.includes(Number(ym.slice(5, 7)));
+}
+
+/** 画面に出す支給日：「毎月25日」「毎月末日」「毎年6月・12月の10日」 */
+export function payScheduleText(p: Pick<Payroll, "day" | "months">): string {
+  const day = p.day >= 31 ? "末日" : `${p.day}日`;
+  if (!p.months || p.months.length === 0) return `毎月${day}`;
+  return `毎年${p.months.map((m) => `${m}月`).join("・")}の${day}`;
+}
+
+/** 入力の初期の月：毎月なら今月。毎年なら今日にいちばん近い支給月（同じ近さなら過ぎたほう＝入れ忘れを先に） */
+export function entryMonthOf(p: Pick<Payroll, "months">, today: string): string {
+  const ym = today.slice(0, 7);
+  if (isPayMonth(p, ym)) return ym;
+  for (let k = 1; k <= 12; k++) {
+    const past = addMonths(ym, -k);
+    if (isPayMonth(p, past)) return past;
+    const next = addMonths(ym, k);
+    if (isPayMonth(p, next)) return next;
+  }
+  return ym;
+}
+
 /** 保存前のチェック。エラーの文章（なければ null） */
-export function validatePayroll(p: Pick<Payroll, "name" | "accountId" | "day" | "lines">): string | null {
+export function validatePayroll(p: Pick<Payroll, "name" | "accountId" | "day" | "lines" | "months">): string | null {
   if (p.name.trim() === "") return "名前を入れてください";
   if (!p.accountId) return "入金する資産を選んでください";
   if (!Number.isInteger(p.day) || p.day < 1 || p.day > 31) return "支給日は1〜31日で入れてください";
+  if (p.months !== undefined && !isValidPayMonths(p.months)) return "支給する月を1つ以上選んでください";
   for (const l of p.lines) {
     const what = l.kind === "settlement" ? PAYROLL_KIND_LABELS[l.kind] : `${PAYROLL_KIND_LABELS[l.kind]}の行`;
     if (l.kind === "settlement" ? !l.accountId : !l.categoryId) return `${what}の${l.kind === "settlement" ? "資産" : "分類"}を選んでください`;
@@ -122,9 +169,9 @@ function fromTemplateLine(p: Payroll, l: PayrollLine): PayrollEntryLine {
   };
 }
 
-/** 新しい月の入力：日付は「今月の支給日に休日の移動をした日」、金額は前回の金額（なければひな形の金額） */
+/** 新しい月の入力：日付は「今月（毎年のひな形は近い支給月）の支給日に休日の移動をした日」、金額は前回の金額（なければひな形の金額） */
 export function newEntryDraft(p: Payroll, today: string): PayrollEntryDraft {
-  return { date: payrollDateOf(p, today.slice(0, 7)), lines: p.lines.map((l) => fromTemplateLine(p, l)), saveToTemplate: true };
+  return { date: payrollDateOf(p, entryMonthOf(p, today)), lines: p.lines.map((l) => fromTemplateLine(p, l)), saveToTemplate: true };
 }
 
 /** 明細（収入・支出・振替）が指す行き先を行の形にそろえる */
@@ -171,7 +218,7 @@ export function entryDraftFromBatch(p: Payroll, batchTxs: readonly Transaction[]
       txId: t.id,
     });
   }
-  const date = active[0]?.date ?? payrollDateOf(p, today.slice(0, 7));
+  const date = active[0]?.date ?? payrollDateOf(p, entryMonthOf(p, today));
   return { date, lines, saveToTemplate: false };
 }
 

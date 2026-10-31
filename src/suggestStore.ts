@@ -1,5 +1,5 @@
 // 内容・メモの候補の集計を、アプリを開いたときに1回だけ作って持っておく場所
-import { noteReimburseChanged, resetReimburseSet } from "./reimburseStore";
+import { noteReimburseChanged, primeReimburseSet, resetReimburseSet } from "./reimburseStore";
 import { getAll } from "./storage";
 import { buildSuggestIndex, updateSuggestIndex } from "./suggestLogic";
 import type { SuggestIndex } from "./suggestLogic";
@@ -15,6 +15,7 @@ export function getSuggestIndex(): Promise<SuggestIndex> {
   if (current) return Promise.resolve(current);
   if (!loading) {
     loading = getAll("transactions").then((all) => {
+      primeReimburseSet(all); // 立替・返金の集まりも同じ全件から作る（全件を2回読まない）
       const built = buildSuggestIndex(all);
       for (const t of pending) updateSuggestIndex(built, t);
       pending = [];

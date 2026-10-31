@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AccountPanel } from "./AccountPanel";
 import { SHIFT_LABELS } from "./accountLogic";
-import { ChoiceSheet, ConfirmSheet } from "./BottomSheet";
+import { BottomSheet, ChoiceSheet, ConfirmSheet } from "./BottomSheet";
 import { categoryNames, selectableAccounts } from "./entryLogic";
 import { Icon } from "./Icon";
 import { KebabMenu } from "./KebabMenu";
@@ -9,7 +9,19 @@ import { formatYen } from "./money";
 import { NumberSheet } from "./NumberSheet";
 import { PayrollLineRow, TakeHome, TargetPanel } from "./PayrollParts";
 import { PREF_PAYROLL_INTRO, readPref, writePref } from "./localPrefs";
-import { PAYROLL_KINDS, PAYROLL_KIND_LABELS, SETTLEMENT_NOTE, addLineLabel, blankLine, blankPayroll, moveLine, payrollTotals, validatePayroll } from "./payrollLogic";
+import {
+  PAYROLL_KINDS,
+  PAYROLL_KIND_LABELS,
+  SETTLEMENT_NOTE,
+  addLineLabel,
+  blankLine,
+  blankPayroll,
+  moveLine,
+  normalizePayMonths,
+  payScheduleText,
+  payrollTotals,
+  validatePayroll,
+} from "./payrollLogic";
 import { payrollForecast } from "./scheduleLogic";
 import { getAll, newBase, newId, saveRecord, softDelete } from "./storage";
 import { useToast } from "./Toast";
@@ -26,7 +38,11 @@ interface Props {
 const SHIFT_OPTIONS = (["before", "after", "none"] as const).map((value) => ({ value, label: SHIFT_LABELS[value] }));
 
 function dayText(day: number): string {
-  return day >= 31 ? "毎月末日" : `毎月${day}日`;
+  return day >= 31 ? "末日" : `${day}日`;
+}
+
+function monthsText(months: readonly number[] | undefined): string {
+  return months && months.length > 0 ? `毎年 ${months.map((m) => `${m}月`).join("・")}` : "毎月";
 }
 
 /** 設定の「給料明細」：ひな形の一覧と、ひな形の編集 */
@@ -115,7 +131,7 @@ export function PayrollTemplateView({ settings, today, onBack, onEnterMonth }: P
                       <span className="list-main">
                         <span className="list-name">{p.name}</span>
                         <span className="list-sub">
-                          入金：{accounts.find((a) => a.id === p.accountId)?.name ?? "資産不明"}・{dayText(p.day)}
+                          入金：{accounts.find((a) => a.id === p.accountId)?.name ?? "資産不明"}・{payScheduleText(p)}
                         </span>
                         <span className="list-sub">手取りの見込み（前回の金額） {formatYen(forecast.takeHome)}</span>
                       </span>
@@ -149,7 +165,7 @@ interface EditorProps {
 }
 
 type Panel = { type: "account" } | { type: "line"; lineId: Id } | null;
-type Sheet = null | "day" | "shift" | "delete" | "discard";
+type Sheet = null | "months" | "day" | "shift" | "delete" | "discard";
 
 function PayrollEditor({ payroll: initial, isNew, accounts, categories, showToast, onBack, onDone }: EditorProps) {
   const [p, setP] = useState<Payroll>(initial);
@@ -196,6 +212,9 @@ function PayrollEditor({ payroll: initial, isNew, accounts, categories, showToas
       if (last !== undefined && before && before.amount === l.amount) lastAmounts[l.lineId] = last;
     }
     const record: Payroll = { ...p, name: p.name.trim(), lines: p.lines.map((l) => ({ ...l, label: l.label.trim() })) };
+    const months = normalizePayMonths(p.months);
+    if (months) record.months = months;
+    else delete record.months;
     if (Object.keys(lastAmounts).length > 0) record.lastAmounts = lastAmounts;
     else delete record.lastAmounts;
     setSaving(true);
@@ -247,7 +266,7 @@ function PayrollEditor({ payroll: initial, isNew, accounts, categories, showToas
               </li>
             </ul>
             <p className="field-hint">支給 − 控除 − 天引きで払う後払い ＝ 手取り。手取りは画面の下に出ます。</p>
-            <p className="field-hint">賞与は、別のひな形（例：賞与）を作って、入ったときに入れます。先の見込みは見通しの「予定収入」へ。</p>
+            <p className="field-hint">賞与は、別のひな形（例：賞与）を作り、「支給する月」を毎年（例：6月と12月）にします。見通しに手取りの見込みが自動で入ります。</p>
             <div className="actions">
               <button
                 type="button"
@@ -271,6 +290,13 @@ function PayrollEditor({ payroll: initial, isNew, accounts, categories, showToas
             <span className="field-label">入金する資産</span>
             <button type="button" className="select-btn" onClick={() => setPanel({ type: "account" })}>
               <span>{accountName(p.accountId) || <span className="entry-ph">選んでください</span>}</span>
+              <Icon name="chevron-right" size={18} />
+            </button>
+          </div>
+          <div className="field">
+            <span className="field-label">支給する月</span>
+            <button type="button" className="select-btn" onClick={() => setSheet("months")}>
+              <span>{monthsText(p.months)}</span>
               <Icon name="chevron-right" size={18} />
             </button>
           </div>
@@ -381,6 +407,19 @@ function PayrollEditor({ payroll: initial, isNew, accounts, categories, showToas
         </>
       )}
 
+      {sheet === "months" && (
+        <PayMonthsSheet
+          value={p.months}
+          onDecide={(months) => {
+            const next = { ...p };
+            if (months) next.months = months;
+            else delete next.months;
+            setP(next);
+            setSheet(null);
+          }}
+          onClose={() => setSheet(null)}
+        />
+      )}
       {sheet === "day" && (
         <NumberSheet
           title="支給日"
@@ -410,5 +449,46 @@ function PayrollEditor({ payroll: initial, isNew, accounts, categories, showToas
         <ConfirmSheet title="変更を捨てますか" message="ここまでの変更は保存されません。" confirmLabel="捨てる" danger onConfirm={onBack} onClose={() => setSheet(null)} />
       )}
     </div>
+  );
+}
+
+const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+
+/** 支給する月：毎月／毎年（月を複数選ぶ。例：賞与の6月と12月） */
+function PayMonthsSheet({ value, onDecide, onClose }: { value: number[] | undefined; onDecide: (months: number[] | undefined) => void; onClose: () => void }) {
+  const [yearly, setYearly] = useState(value !== undefined && value.length > 0);
+  const [picked, setPicked] = useState<number[]>(value ?? []);
+  const toggle = (m: number) => setPicked((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m].sort((a, b) => a - b)));
+  return (
+    <BottomSheet title="支給する月" onClose={onClose}>
+      <div className="segmented" role="group" aria-label="支給の周期">
+        <button type="button" className={`seg${!yearly ? " on" : ""}`} aria-pressed={!yearly} onClick={() => setYearly(false)}>
+          毎月
+        </button>
+        <button type="button" className={`seg${yearly ? " on" : ""}`} aria-pressed={yearly} onClick={() => setYearly(true)}>
+          毎年（月を選ぶ）
+        </button>
+      </div>
+      {yearly && (
+        <>
+          <p className="field-hint">支給する月をすべて選びます（例：賞与なら6月と12月）。選んだ月だけ、見通しに手取りの見込みが入ります。</p>
+          <div className="pay-month-grid" role="group" aria-label="支給する月">
+            {MONTHS.map((m) => (
+              <button key={m} type="button" className={`chip${picked.includes(m) ? " on" : ""}`} aria-pressed={picked.includes(m)} onClick={() => toggle(m)}>
+                {m}月
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="sheet-actions">
+        <button type="button" className="secondary-btn" onClick={onClose}>
+          やめる
+        </button>
+        <button type="button" className="primary-btn" disabled={yearly && picked.length === 0} onClick={() => onDecide(yearly ? normalizePayMonths(picked) : undefined)}>
+          決める
+        </button>
+      </div>
+    </BottomSheet>
   );
 }

@@ -61,8 +61,11 @@ export function pressKey(state: PadState, key: PadKey): PadState {
 
 export type EvalResult = { ok: true; value: number } | { ok: false; reason: "empty" | "incomplete" | "divideByZero" | "notPositive" | "tooLarge" };
 
-/** 式を計算して整数にする。掛け算・割り算を先に、割り算の端数は最後に四捨五入 */
-export function evaluate(expr: string): EvalResult {
+/**
+ * 式を計算して整数にする。掛け算・割り算を先に、割り算の端数は最後に四捨五入。
+ * allowZero：0円も入れられる欄（給料明細の行・検索の下限など。入力画面の金額は1円以上）
+ */
+export function evaluate(expr: string, opts: { allowZero?: boolean } = {}): EvalResult {
   if (expr === "") return { ok: false, reason: "empty" };
   if (isOperator(expr[expr.length - 1])) return { ok: false, reason: "incomplete" };
   const numbers: number[] = [];
@@ -97,14 +100,24 @@ export function evaluate(expr: string): EvalResult {
   for (let i = 0; i < addOps.length; i++) total = addOps[i] === "+" ? total + terms[i + 1] : total - terms[i + 1];
   if (!Number.isFinite(total)) return { ok: false, reason: "tooLarge" };
   const value = Math.round(total);
-  if (value <= 0) return { ok: false, reason: "notPositive" };
+  if (value < 0 || (value === 0 && !opts.allowZero)) return { ok: false, reason: "notPositive" };
   if (value > MAX_AMOUNT) return { ok: false, reason: "tooLarge" };
   return { ok: true, value };
 }
 
 /** 「完了」を押せるか（式が完成していて、結果が1円以上12桁以内） */
-export function canFinish(expr: string): boolean {
-  return evaluate(expr).ok;
+export function canFinish(expr: string, opts: { allowZero?: boolean } = {}): boolean {
+  return evaluate(expr, opts).ok;
+}
+
+/**
+ * 金額の欄のテンキー（#29）で「完了」したときの値。空なら null（空欄）、計算できないときは undefined（完了できない）。
+ * 金額の欄はどれも0円を入れられる（必要なら画面の側のチェックで止める）
+ */
+export function padValue(expr: string): number | null | undefined {
+  if (expr === "") return null;
+  const r = evaluate(expr, { allowZero: true });
+  return r.ok ? r.value : undefined;
 }
 
 const SYMBOLS: Record<string, string> = { "+": "＋", "-": "−", "*": "×", "/": "÷" };

@@ -136,7 +136,7 @@ export function OutlookView({ tabBar, today, version, settings, onOpenSettings, 
             <p className="field-hint outlook-note">
               変動費の見込みは、直近の終わった{outlook.averagedPeriods > 0 ? `${outlook.averagedPeriods}区切り` : "区切り"}の平均です
               {outlook.averagedPeriods === 0 ? "（まだ数えられる区切りがないので「—」。0円として計算しています）" : ""}。今の区切りは、平均から今の区切りでもう使った分（{formatYen(outlook.currentSpent)}）を引いた残りで数えています。
-              給料の見込みは、給料明細のひな形の手取り（前回の金額）です。「毎月変わる」にした行（残業代など）は入れていません。予定収入（見込み）は期末の見込みに足していますが、使える額・予算には入れていません。カードの引き落としは参考の行で、期末の見込みには入れていません。
+              給料の見込みは、給料明細のひな形の手取り（前回の金額）です。支給する月を「毎年」にしたひな形（賞与など）は、その月だけ入れます。「毎月変わる」にした行（残業代など）は入れていません。予定収入（見込み）は期末の見込みに足していますが、使える額・予算には入れていません。カードの引き落としは参考の行で、期末の見込みには入れていません。
             </p>
             <p className="field-hint outlook-note">3か月より先は、予定出費・年1回や半年ごとの繰り返し・賞与を入れると違いが出ます。</p>
           </section>

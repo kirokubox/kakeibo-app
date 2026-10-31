@@ -1,6 +1,7 @@
 import { BACKUP_APP_NAME, BACKUP_SCHEMA_VERSION } from "./constants.js";
 import { isIsoDateTime, isLocalDate, isMonthKey } from "./dateUtils.js";
 import { isYen } from "./money.js";
+import { isValidPayMonths } from "./payrollLogic.js";
 import { DATA_STORE_NAMES } from "./types.js";
 import type { BackupFile, DataSet, DataStoreName, Settings } from "./types.js";
 
@@ -273,6 +274,7 @@ const checkPayroll: Check = (v, at) => {
     reqId(v, "accountId", at),
     Number.isSafeInteger(v.day) && (v.day as number) >= 1 && (v.day as number) <= 31 ? null : `${at}.day が 1〜31 の整数ではありません`,
     reqEnum(v, "holidayShift", HOLIDAY_SHIFTS, at),
+    opt(v, "months", at, isValidPayMonths, "1〜12 の整数の配列（重なりなし・1つ以上）"),
     linesProblem,
     lastProblem,
   );

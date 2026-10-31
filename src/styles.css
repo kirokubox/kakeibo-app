@@ -364,7 +364,16 @@ button.entry-row:active { background: var(--kb-surface-2); }
 .memo-row .entry-label { padding-top: 16px; }
 .memo-input { resize: none; overflow: hidden; line-height: 1.5; padding: 12px 0; font-family: inherit; }
 .content-row:focus-within, .memo-row:focus-within { background: var(--kb-accent-soft); }
-.suggest { list-style: none; margin: 0; padding: var(--kb-space-2) var(--kb-space-4); display: flex; flex-wrap: wrap; gap: var(--kb-space-2); border-top: 1px solid var(--kb-line); }
+.suggest-bar {
+  list-style: none; margin: 0; padding: var(--kb-space-2) var(--kb-space-4); display: flex; flex-wrap: nowrap; align-items: center; gap: var(--kb-space-2);
+  min-height: 56px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-margin-top: var(--kb-space-2);
+  border-top: 1px solid var(--kb-line); background: var(--kb-surface-2);
+}
+.suggest-bar::-webkit-scrollbar { display: none; }
+.suggest-bar > li { flex: none; }
+.suggest-bar .chip { background: var(--kb-surface); white-space: nowrap; }
+.suggest-empty { color: var(--kb-text-3); font-size: var(--kb-fs-s); }
+.typing-space { flex: none; height: 55dvh; }
 .pad-hint { padding: 0 var(--kb-space-4) var(--kb-space-2); }
 .hint { display: flex; align-items: center; gap: var(--kb-space-3); padding: var(--kb-space-2) var(--kb-space-4); border-top: 1px solid var(--kb-line); background: var(--kb-warning-soft); }
 .hint-text { flex: 1; min-width: 0; font-size: var(--kb-fs-s); color: var(--kb-warning); line-height: 1.4; }
@@ -411,6 +420,32 @@ button.entry-row:active { background: var(--kb-surface-2); }
 .pad-key.op, .pad-key.back { background: var(--kb-accent-soft); color: var(--kb-accent-strong); }
 .pad-key.finish { grid-column: 5; grid-row: 1 / span 4; background: var(--kb-accent); color: var(--kb-on-accent); font-size: 1.125rem; font-weight: 700; }
 .pad-key.finish:disabled { opacity: 0.4; cursor: default; transform: none; }
+.pad-grid.digits { grid-template-columns: repeat(3, 1fr) 1.2fr; }
+.pad-grid.digits .pad-key.finish { grid-column: 4; }
+.pad-key.wide { grid-column: span 2; }
+
+/* 金額の欄のテンキー（#29）。ほかのシートの上にも重ねる */
+.pad-backdrop {
+  position: fixed; inset: 0; z-index: 35; display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(15, 23, 42, 0.25); animation: fade-in var(--kb-dur) var(--kb-ease);
+}
+.pad-sheet {
+  width: 100%; max-width: var(--kb-content-max); background: var(--kb-surface); border-radius: var(--kb-radius-l) var(--kb-radius-l) 0 0;
+  padding: var(--kb-space-2) 0 env(safe-area-inset-bottom); animation: sheet-in var(--kb-dur) var(--kb-ease);
+}
+.pad-display {
+  display: flex; align-items: baseline; justify-content: flex-end; gap: var(--kb-space-1); padding: var(--kb-space-1) var(--kb-space-4) var(--kb-space-2);
+  font-size: var(--kb-fs-xl); font-weight: 700; font-variant-numeric: tabular-nums; min-height: 48px;
+}
+.pad-display.in-sheet { padding: var(--kb-space-2) var(--kb-space-3); background: var(--kb-surface-2); border-radius: var(--kb-radius-m); margin-bottom: var(--kb-space-2); }
+.pad-display .unit { font-size: var(--kb-fs-m); font-weight: 400; color: var(--kb-text-2); }
+.pad-display-value { min-width: 0; overflow-wrap: anywhere; text-align: right; }
+.pad-display-value.selected { background: var(--kb-accent-soft); color: var(--kb-accent-strong); border-radius: var(--kb-radius-s); padding: 0 6px; }
+.pad-preview { margin: 0; padding: 0 var(--kb-space-4) var(--kb-space-2); text-align: right; color: var(--kb-text-2); font-size: var(--kb-fs-s); }
+.sheet-pad { margin: 0 calc(-1 * var(--kb-space-3)); }
+.sheet-pad .pad-grid { padding-bottom: 0; }
+.yen-btn { flex: 1; min-width: 0; text-align: right; cursor: pointer; }
+.yen-btn.active { box-shadow: inset 0 0 0 2px var(--kb-accent); }
 
 /* 明細タブ */
 .entries-content { gap: var(--kb-space-3); }
@@ -559,6 +594,8 @@ ul.chips { margin: 0; padding: 0; list-style: none; }
 .payroll-line-bottom { display: flex; align-items: center; gap: var(--kb-space-2); }
 .payroll-line-bottom .text-input { flex: 1; min-width: 0; }
 .payroll-line-bottom .yen-input { flex: none; width: 150px; }
+.pay-month-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--kb-space-2); margin-top: var(--kb-space-2); }
+.pay-month-grid .chip { min-height: 44px; }
 .payroll-section { padding: var(--kb-space-2) 0; }
 .payroll-section h2 { margin: 0; padding: var(--kb-space-2) var(--kb-space-4); font-size: var(--kb-fs-s); color: var(--kb-text-2); }
 .payroll-add { display: flex; justify-content: flex-start; padding: var(--kb-space-1) var(--kb-space-3); }

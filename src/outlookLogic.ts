@@ -8,6 +8,7 @@ import { inflowOf, nextPaydayAfter, outflowOf, paydayOnOrBefore, recurringFlows,
 import type { BudgetSettings, CommittedItem, DateSpan } from "./budgetLogic.js";
 import { openPlannedIncomes, plannedStatuses, sortPlanned } from "./plannedLogic.js";
 import { reserveBalances, spendByTx } from "./reserveLogic.js";
+import { isPayMonth } from "./payrollLogic.js";
 import { payrollForecast } from "./scheduleLogic.js";
 import type { CardStatement, DataSet, PlannedExpense, PlannedIncome, Transaction } from "./types.js";
 
@@ -109,13 +110,14 @@ export function averageVariable(data: Pick<OutlookData, "transactions" | "reserv
   return { average: Math.round(values.reduce((a, b) => a + b, 0) / values.length), periods: values.length };
 }
 
-/** 給料明細のひな形から、期間の手取りの見込み（すでにその日の給料明細を入れていれば数えない） */
+/** 給料明細のひな形から、期間の手取りの見込み（すでにその日の給料明細を入れていれば数えない。毎年のひな形＝賞与は支給する月だけ） */
 export function payrollIncomeBetween(data: Pick<OutlookData, "payrolls" | "transactions">, from: string, to: string): CommittedItem[] {
   const out: CommittedItem[] = [];
   const dates = new Set<string>();
   for (const p of data.payrolls) {
     if (p.deletedAt !== null) continue;
     for (let ym = addMonths(from.slice(0, 7), -1); ym <= addMonths(to.slice(0, 7), 1); ym = addMonths(ym, 1)) {
+      if (!isPayMonth(p, ym)) continue;
       const f = payrollForecast(p, ym);
       if (f.date < from || f.date > to || f.takeHome <= 0) continue;
       const key = `${p.id}:${f.date}`;

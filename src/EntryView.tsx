@@ -411,6 +411,11 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
     setPanel(null);
   };
 
+  /** 文字の欄を押したとき：候補の帯と欄を画面の上へ寄せる（下半分はキーボードに隠れるため。#28） */
+  const liftToTop = (strip: string, row: string) => {
+    window.setTimeout(() => (rowRefs.current[strip] ?? rowRefs.current[row])?.scrollIntoView({ block: "start", behavior: "smooth" }), 60);
+  };
+
   const focusContent = () => {
     setPanel(null);
     window.setTimeout(() => contentRef.current?.focus(), 30);
@@ -1103,31 +1108,10 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
                 </div>
               )}
 
-              <div className="entry-row content-row" ref={setRowRef("content")}>
-                <label className="entry-label" htmlFor="entry-content">
-                  内容
-                </label>
-                <input
-                  id="entry-content"
-                  ref={contentRef}
-                  className="entry-input"
-                  type="text"
-                  autoComplete="off"
-                  placeholder={isTransfer ? "カード引き落としなど（空でも保存できます）" : "店名など（空でも保存できます）"}
-                  value={curContent}
-                  onFocus={() => {
-                    setContentFocused(true);
-                    if (panel) closePanel();
-                  }}
-                  onBlur={(e) => {
-                    setContentFocused(false);
-                    setDecided(e.currentTarget.value.trim());
-                  }}
-                  onChange={(e) => patchCommon({ content: e.target.value })}
-                />
-              </div>
-              {contentSuggestions.length > 0 && (
-                <ul className="suggest" aria-label="内容の候補">
+              {contentFocused && index && (
+                // 候補は欄のすぐ上に横1列で出す（下に出すと、キーボードの裏に隠れる。#28）
+                <ul className="suggest-bar" aria-label="内容の候補" ref={setRowRef("contentSuggest")}>
+                  {contentSuggestions.length === 0 && <li className="suggest-empty">候補なし</li>}
                   {contentSuggestions.map((s) => (
                     <li key={s}>
                       <button
@@ -1146,6 +1130,30 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
                   ))}
                 </ul>
               )}
+              <div className="entry-row content-row" ref={setRowRef("content")}>
+                <label className="entry-label" htmlFor="entry-content">
+                  内容
+                </label>
+                <input
+                  id="entry-content"
+                  ref={contentRef}
+                  className="entry-input"
+                  type="text"
+                  autoComplete="off"
+                  placeholder={isTransfer ? "カード引き落としなど（空でも保存できます）" : "店名など（空でも保存できます）"}
+                  value={curContent}
+                  onFocus={() => {
+                    setContentFocused(true);
+                    if (panel) closePanel();
+                    liftToTop("contentSuggest", "content");
+                  }}
+                  onBlur={(e) => {
+                    setContentFocused(false);
+                    setDecided(e.currentTarget.value.trim());
+                  }}
+                  onChange={(e) => patchCommon({ content: e.target.value })}
+                />
+              </div>
               {hasHint && (
                 <div className="hint" role="status">
                   <span className="hint-text">前回：{hintLabel}</span>
@@ -1175,27 +1183,9 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
                 </div>
               )}
 
-              <div className="entry-row memo-row">
-                <label className="entry-label" htmlFor="entry-memo">
-                  メモ
-                </label>
-                <textarea
-                  id="entry-memo"
-                  ref={memoRef}
-                  className="entry-input memo-input"
-                  rows={1}
-                  placeholder={isTransfer ? "自由に書けます" : "人の名前・作品名など"}
-                  value={curMemo}
-                  onFocus={() => {
-                    setMemoFocused(true);
-                    if (panel) closePanel();
-                  }}
-                  onBlur={() => setMemoFocused(false)}
-                  onChange={(e) => patchCommon({ memo: e.target.value.replace(/\n/g, " ") })}
-                />
-              </div>
-              {memoSuggestions.length > 0 && (
-                <ul className="suggest" aria-label="メモの語の候補">
+              {memoFocused && index && !isTransfer && (
+                <ul className="suggest-bar" aria-label="メモの語の候補" ref={setRowRef("memoSuggest")}>
+                  {memoSuggestions.length === 0 && <li className="suggest-empty">{currentWord(draft.memo) === "" && draft.memo !== "" ? "続きを打つと、過去の語が候補に出ます" : "候補なし"}</li>}
                   {memoSuggestions.map((w) => (
                     <li key={w}>
                       <button
@@ -1210,7 +1200,26 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
                   ))}
                 </ul>
               )}
-              {!isTransfer && memoFocused && currentWord(draft.memo) === "" && draft.memo !== "" && <p className="field-hint pad-hint">続きを打つと、過去の語が候補に出ます</p>}
+              <div className="entry-row memo-row" ref={setRowRef("memo")}>
+                <label className="entry-label" htmlFor="entry-memo">
+                  メモ
+                </label>
+                <textarea
+                  id="entry-memo"
+                  ref={memoRef}
+                  className="entry-input memo-input"
+                  rows={1}
+                  placeholder={isTransfer ? "自由に書けます" : "人の名前・作品名など"}
+                  value={curMemo}
+                  onFocus={() => {
+                    setMemoFocused(true);
+                    if (panel) closePanel();
+                    liftToTop("memoSuggest", "memo");
+                  }}
+                  onBlur={() => setMemoFocused(false)}
+                  onChange={(e) => patchCommon({ memo: e.target.value.replace(/\n/g, " ") })}
+                />
+              </div>
 
               {!isTransfer && draft.type === "expense" && (
                 <button
@@ -1274,6 +1283,8 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
             </section>
           </>
         )}
+        {/* 文字を打っている間は下に余白を足して、欄を画面の上まで寄せられるようにする */}
+        {(contentFocused || memoFocused) && <div className="typing-space" aria-hidden="true" />}
       </main>
 
       {panel === "account" && (

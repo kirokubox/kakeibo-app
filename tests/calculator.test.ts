@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canFinish, evaluate, formatExpr, hasOperator, pressKey, startPad } from "../src/calculator.js";
+import { canFinish, evaluate, formatExpr, hasOperator, padValue, pressKey, startPad } from "../src/calculator.js";
 import type { PadKey, PadState } from "../src/calculator.js";
 
 /** キーを順に押した後の状態 */
@@ -100,4 +100,20 @@ test("式の表示と判定", () => {
   assert.equal(formatExpr(""), "");
   assert.equal(hasOperator("1280+540"), true);
   assert.equal(hasOperator("1280"), false);
+});
+
+test("金額の欄のテンキー（#29）：空は空欄、0円も入れられる、計算できない式は完了できない", () => {
+  assert.equal(padValue(""), null);
+  assert.equal(padValue("0"), 0);
+  assert.equal(padValue("1200"), 1200);
+  assert.equal(padValue("1000+250"), 1250);
+  assert.equal(padValue("500-500"), 0);
+  assert.equal(padValue("100-200"), undefined);
+  assert.equal(padValue("100+"), undefined);
+  assert.equal(padValue("10/0"), undefined);
+  // 入力画面の金額（allowZero なし）はこれまでどおり1円以上
+  assert.equal(evaluate("0").ok, false);
+  assert.equal(evaluate("0", { allowZero: true }).ok, true);
+  assert.equal(canFinish("500-500"), false);
+  assert.equal(canFinish("500-500", { allowZero: true }), true);
 });

@@ -117,6 +117,8 @@ export interface Payroll extends Base {
   accountId: Id;
   day: number;
   holidayShift: HolidayShift;
+  /** 支給する月（1〜12、小さい順）。無い＝毎月。賞与など「毎年6月と12月」のひな形で使う（#26） */
+  months?: number[];
   lines: PayrollLine[];
   /** 行ごとの前回の金額（キーは lineId）。次の月の初期値にする */
   lastAmounts?: Record<string, number>;

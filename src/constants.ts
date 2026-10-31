@@ -1,6 +1,6 @@
 import type { Settings } from "./types.js";
 
-export const APP_VERSION = "0.10.0";
+export const APP_VERSION = "0.11.0";
 /** 初期分類の作成・更新時刻（固定）。本人用の初期データの分類は、これより新しい updatedAt を持つので「更新する」で上書きできる。別の端末で初期分類を入れても同じ時刻になり、本人が変えたもの（これより後）が追加読み込みで「新しい方」になる */
 export const SEED_TIMESTAMP = "2026-10-25T00:00:00.000Z";
 export const APP_NAME = "家計簿";

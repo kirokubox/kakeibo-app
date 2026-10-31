@@ -82,6 +82,7 @@
     "tests/profileImport.test.ts",
     "tests/manualBudget.test.ts",
     "tests/cardDebitLogic.test.ts",
-    "tests/plannedIncome.test.ts"
+    "tests/plannedIncome.test.ts",
+    "tests/payMonths.test.ts"
   ]
 }
