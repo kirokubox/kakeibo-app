@@ -28,7 +28,7 @@ export function ReserveRows({ reserves, balances, plannedNotes, onOpen }: RowsPr
       {reserves.map((r) => {
         const balance = Math.max(0, balances.get(r.id) ?? 0);
         const note = targetNote(r, balance);
-        const month = r.targetMonth ? `${formatMonthJa(r.targetMonth)}に使う` : "";
+        const month = r.repeat ? "くり返し使う" : r.targetMonth ? `${formatMonthJa(r.targetMonth)}に使う` : "";
         return (
           <li key={r.id}>
             <button type="button" className="list-row" onClick={() => onOpen(r.id)}>

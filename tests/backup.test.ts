@@ -114,6 +114,7 @@ test("金額が整数でないものは他のストアでも拒否", () => {
     ["繰り返しのひな形", (b) => { b.recurrings[0].template.amount = "3000"; }, /recurrings\[0\]\.template\.amount/],
     ["給料明細の行", (b) => { b.payrolls[0].lines[1].amount = 0.1; }, /payrolls\[0\]\.lines\[1\]\.amount/],
     ["取り置きの目標額", (b) => { b.reserves[0].targetAmount = 1.5; }, /reserves\[0\]\.targetAmount/],
+    ["取り置きの種類", (b) => { (b.reserves[0] as unknown as Record<string, unknown>).repeat = "yes"; }, /reserves\[0\]\.repeat/],
     ["予定出費", (b) => { b.plannedExpenses[0].amount = "8000"; }, /plannedExpenses\[0\]\.amount/],
     ["予算の根拠", (b) => { b.budgetSnapshots[0].basis.usable = 1.5; }, /budgetSnapshots\[0\]\.basis\.usable/],
     ["カード請求", (b) => { b.cardStatements[0].actualAmount = 12345.6; }, /cardStatements\[0\]\.actualAmount/],

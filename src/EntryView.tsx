@@ -40,7 +40,7 @@ import { applyReimbFields, checkReimbWithin, isSettleCategory, outstandingGroups
 import type { OutstandingItem, Reimb } from "./reimburseLogic";
 import { getReimburseSet } from "./reimburseStore";
 import { ReservePicker } from "./ReservePicker";
-import { balanceOf, netPayAmount, overflowOf, planSpendSync } from "./reserveLogic";
+import { afterSpendOffer, balanceOf, netPayAmount, newMove, overflowOf, planSpendSync } from "./reserveLogic";
 import {
   applyRepeatEdit,
   buildRecurring,
@@ -58,7 +58,7 @@ import { getAll, newBase, saveRecord, saveRecords, saveStores, softDelete } from
 import { getSuggestIndex, noteTransactionChanged } from "./suggestStore";
 import { currentWord, lastUsageOf, replaceCurrentWord, suggestContents, suggestMemoWords } from "./suggestLogic";
 import type { SuggestIndex } from "./suggestLogic";
-import type { ShowToast } from "./Toast";
+import type { ShowToast, ToastAction } from "./Toast";
 import {
   applyTransferHint,
   cardTransferContents,
@@ -603,6 +603,50 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
     }
   };
 
+  /**
+   * 1回きりの取り置きから払ったときの案内（トーストのボタン）。残りがあれば「戻して閉じる」、使い切ったら「閉じる」。
+   * 前から同じ取り置きで払っていた明細を直しただけのときは出さない。
+   */
+  const reserveOfferToast = async (record: Transaction): Promise<{ text: string; action: ToastAction } | null> => {
+    if (record.type !== "expense" || !record.reserveId || record.reserveId === initialReserveId) return null;
+    const reserve = reserves.find((r) => r.id === record.reserveId);
+    if (!reserve) return null;
+    const offer = afterSpendOffer(reserve, balanceOf(reserve.id, await getAll("reserveMoves")));
+    if (!offer) return null;
+    const done = (message: string) => {
+      onChanged();
+      showToast(message);
+    };
+    const fail = (e: unknown) => showToast(e instanceof Error ? e.message : "保存できませんでした");
+    if (offer.kind === "releaseClose") {
+      return {
+        text: `保存しました。「${reserve.name}」の残りは${formatYen(offer.balance)}`,
+        action: {
+          label: "戻して閉じる",
+          onClick: () => {
+            saveStores({
+              reserveMoves: [newMove(newBase(), reserve.id, "release", offer.balance, today)],
+              reserves: [{ ...reserve, closedAt: nowIso() }],
+            })
+              .then(() => done(`「${reserve.name}」の残りを使える額に戻して、閉じました`))
+              .catch(fail);
+          },
+        },
+      };
+    }
+    return {
+      text: `保存しました。「${reserve.name}」を使い切りました`,
+      action: {
+        label: "閉じる",
+        onClick: () => {
+          saveRecord("reserves", { ...reserve, closedAt: nowIso() })
+            .then(() => done(`「${reserve.name}」を閉じました`))
+            .catch(fail);
+        },
+      },
+    };
+  };
+
   const save = async (andContinue: boolean) => {
     if (saving) return;
     if (isFavMode) {
@@ -692,11 +736,13 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
         saved = record;
       }
       if (saved) noteTransactionChanged(saved);
+      const offer = saved ? await reserveOfferToast(saved).catch(() => null) : null;
       const fromId = isTransfer ? t.fromId : d.accountId;
       if (fromId) writePref(PREF_LAST_ACCOUNT, fromId);
       onChanged();
       if (!andContinue) {
-        showToast(repeatToast && !saved ? repeatToast : `保存しました${repeatToast}`);
+        if (offer) showToast(`${offer.text}${repeatToast}`, 8000, offer.action);
+        else showToast(repeatToast && !saved ? repeatToast : `保存しました${repeatToast}`);
         onClose();
         return;
       }
@@ -724,7 +770,8 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
       }
       setDecided(null);
       setError(null);
-      showToast("保存しました（続けて入力）");
+      if (offer) showToast(`${offer.text}（続けて入力）`, 8000, offer.action);
+      else showToast("保存しました（続けて入力）");
       void getReimburseSet().then(setReimburseSet);
       void getAll("reserveMoves").then(setReserveMoves);
     } catch (e) {

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  afterSpendOffer,
   assignWarning,
+  lastSpend,
+  refillAmount,
+  reserveTypeLabel,
   balanceOf,
   moveHistory,
   netPayAmount,
@@ -143,4 +147,38 @@ test("閉じるときの戻し・一覧の並び・履歴・目標の言葉", ()
   assert.equal(targetNote(reserve("t", { targetAmount: 50000 }), 20000), "目標 50,000円まであと30,000円");
   assert.equal(targetNote(reserve("t", { targetAmount: 50000 }), 50000), "目標 50,000円に届いています");
   assert.equal(targetNote(reserve("t"), 100), null);
+});
+
+test("くり返し使う取り置き：種類の名前と、目標額を1回分として表示する", () => {
+  assert.equal(reserveTypeLabel(reserve("a")), "1回きり");
+  assert.equal(reserveTypeLabel(reserve("a", { repeat: true })), "くり返し使う");
+  assert.equal(targetNote(reserve("a", { repeat: true, targetAmount: 6000 }), 2000), "1回分 6,000円まであと4,000円");
+  assert.equal(targetNote(reserve("a", { targetAmount: 6000 }), 2000), "目標 6,000円まであと4,000円");
+});
+
+test("くり返し使う取り置き：目標額まで補充する額。1回きり・目標なし・足りているときは0", () => {
+  assert.equal(refillAmount(reserve("a", { repeat: true, targetAmount: 6000 }), 500), 5500);
+  assert.equal(refillAmount(reserve("a", { repeat: true, targetAmount: 6000 }), 7000), 0);
+  assert.equal(refillAmount(reserve("a", { repeat: true }), 0), 0);
+  assert.equal(refillAmount(reserve("a", { targetAmount: 6000 }), 0), 0);
+});
+
+test("前回使った日と額：いちばん新しい日の「使った」の合計。削除済み・ほかの取り置きは除く", () => {
+  const moves = [
+    move("m1", "a", "spend", 5000, "2026-09-01", "t1"),
+    move("m2", "a", "spend", 3000, "2026-10-20", "t2"),
+    move("m3", "a", "spend", 1000, "2026-10-20", "t3"),
+    move("m4", "a", "spend", 9000, "2026-10-30", "t4", { deletedAt: T1 }),
+    move("m5", "b", "spend", 9000, "2026-10-31", "t5"),
+    move("m6", "a", "assign", 9000, "2026-10-31"),
+  ];
+  assert.deepEqual(lastSpend("a", moves), { date: "2026-10-20", amount: 4000 });
+  assert.equal(lastSpend("c", moves), null);
+});
+
+test("1回きりから払ったあとの案内：残りがあれば戻して閉じる、使い切ったら閉じる。くり返し・閉じたものには出さない", () => {
+  assert.deepEqual(afterSpendOffer(reserve("a"), 1200), { kind: "releaseClose", balance: 1200 });
+  assert.deepEqual(afterSpendOffer(reserve("a"), 0), { kind: "close" });
+  assert.equal(afterSpendOffer(reserve("a", { repeat: true }), 1200), null);
+  assert.equal(afterSpendOffer(reserve("a", { closedAt: T1 }), 1200), null);
 });

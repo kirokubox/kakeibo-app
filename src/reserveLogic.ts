@@ -67,6 +67,7 @@ export function netPayAmount(amount: number, reimb?: { amount: number } | null):
 
 export interface ReserveDraft {
   name: string;
+  repeat?: boolean;
   targetAmount: number | null;
   targetMonth: string; // 空なら使う月なし
 }
@@ -133,12 +134,46 @@ export function planSpendSync(tx: Transaction, moves: readonly ReserveMove[], no
   return out;
 }
 
-/** 「目標 ◯円まであと◯円」。目標がなければ null */
+/** 「目標 ◯円まであと◯円」。目標がなければ null。くり返し使う取り置きでは目標額＝1回分の目安 */
 export function targetNote(reserve: Reserve, balance: number): string | null {
   if (reserve.targetAmount === undefined) return null;
   const left = reserve.targetAmount - balance;
   const yen = (n: number) => `${n.toLocaleString("ja-JP")}円`;
-  return left > 0 ? `目標 ${yen(reserve.targetAmount)}まであと${yen(left)}` : `目標 ${yen(reserve.targetAmount)}に届いています`;
+  const label = reserve.repeat ? "1回分" : "目標";
+  return left > 0 ? `${label} ${yen(reserve.targetAmount)}まであと${yen(left)}` : `${label} ${yen(reserve.targetAmount)}に届いています`;
+}
+
+/** 種類の表示名 */
+export function reserveTypeLabel(reserve: Pick<Reserve, "repeat">): string {
+  return reserve.repeat ? "くり返し使う" : "1回きり";
+}
+
+/** その取り置きから最後に払った日と額（同じ日に複数あれば合計）。なければ null */
+export function lastSpend(reserveId: Id, moves: readonly ReserveMove[]): { date: string; amount: number } | null {
+  let date = "";
+  for (const m of moves) if (m.deletedAt === null && m.reserveId === reserveId && m.kind === "spend" && m.date > date) date = m.date;
+  if (date === "") return null;
+  const amount = moves
+    .filter((m) => m.deletedAt === null && m.reserveId === reserveId && m.kind === "spend" && m.date === date)
+    .reduce((sum, m) => sum + m.amount, 0);
+  return { date, amount };
+}
+
+/** 目標額まで補充する額（くり返し使う取り置きで、目標額があり残高が足りないとき）。補充しないなら 0 */
+export function refillAmount(reserve: Reserve, balance: number): number {
+  if (!reserve.repeat || reserve.targetAmount === undefined) return 0;
+  return Math.max(0, reserve.targetAmount - balance);
+}
+
+export type AfterSpendOffer = { kind: "releaseClose"; balance: number } | { kind: "close" };
+
+/**
+ * 1回きりの取り置きから払ったあとに出す案内。残りがあれば「戻して閉じる」、使い切ったら「閉じる」。
+ * くり返し使う・閉じている取り置きには出さない。
+ */
+export function afterSpendOffer(reserve: Reserve, balanceAfter: number): AfterSpendOffer | null {
+  if (reserve.repeat || reserve.closedAt || reserve.deletedAt !== null) return null;
+  return balanceAfter > 0 ? { kind: "releaseClose", balance: balanceAfter } : { kind: "close" };
 }
 
 /** 一覧の並び：使う月が近い順（月なしは後ろ）、同じなら作った順。閉じたものは別に分ける */

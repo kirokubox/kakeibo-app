@@ -286,6 +286,7 @@ const checkReserve: Check = (v, at) =>
     opt(v, "targetAmount", at, isYen, "整数の金額"),
     opt(v, "targetMonth", at, isMonthKey, "YYYY-MM 形式"),
     opt(v, "closedAt", at, isIsoDateTime, "時刻つきの日時"),
+    opt(v, "repeat", at, isBool, "true/false"),
   );
 
 const checkReserveMove: Check = (v, at) =>

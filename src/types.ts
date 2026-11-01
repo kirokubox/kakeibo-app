@@ -129,6 +129,8 @@ export interface Reserve extends Base {
   targetAmount?: number;
   targetMonth?: string; // YYYY-MM
   closedAt?: string;
+  /** くり返し使う取り置き（美容院・洋服など）。払っても閉じず、目標額は「1回分の目安」。無ければ1回きり（v0.12.0〜） */
+  repeat?: boolean;
 }
 
 export type ReserveMoveKind = "assign" | "release" | "spend";

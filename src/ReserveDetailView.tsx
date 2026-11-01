@@ -9,7 +9,7 @@ import { formatYen } from "./money";
 import { shortDate } from "./periodLogic";
 import { ReserveEditor } from "./ReserveEditor";
 import { plannedNotesByReserve } from "./plannedLogic";
-import { RESERVE_KIND_LABELS, assignWarning, balanceOf, moveHistory, newMove, targetNote, validateAssign, validateRelease } from "./reserveLogic";
+import { RESERVE_KIND_LABELS, assignWarning, balanceOf, lastSpend, moveHistory, newMove, refillAmount, reserveTypeLabel, targetNote, validateAssign, validateRelease } from "./reserveLogic";
 import { newBase, saveRecord, saveStores } from "./storage";
 import type { ShowToast } from "./Toast";
 import type { Reserve } from "./types";
@@ -36,6 +36,20 @@ export function ReserveDetailView({ reserve, bundle, today, usable, onBack, onCh
   const note = targetNote(reserve, balance);
   const plannedNote = plannedNotesByReserve(bundle.plannedExpenses).get(reserve.id);
   const closed = !!reserve.closedAt;
+  const last = lastSpend(reserve.id, bundle.reserveMoves);
+  const refill = closed ? 0 : refillAmount(reserve, balance);
+  const [refilling, setRefilling] = useState(false);
+  const doRefill = () => {
+    if (refill <= 0 || refilling) return;
+    setRefilling(true);
+    saveRecord("reserveMoves", newMove(newBase(), reserve.id, "assign", refill, today))
+      .then(() => {
+        showToast(`${formatYen(refill)}を補充しました`);
+        onChanged();
+      })
+      .catch(fail)
+      .finally(() => setRefilling(false));
+  };
   const fail = (e: unknown) => showToast(e instanceof Error ? e.message : "保存できませんでした");
 
   const items: MenuItem[] = [
@@ -79,11 +93,18 @@ export function ReserveDetailView({ reserve, bundle, today, usable, onBack, onCh
       </header>
       <main className="content">
         <section className="card summary">
-          <p className="summary-label">残高{closed ? "（閉じています）" : ""}</p>
+          <p className="summary-label">
+            残高{closed ? "（閉じています）" : ""}・{reserveTypeLabel(reserve)}
+          </p>
           <p className="summary-main">{formatYen(balance)}</p>
           {reserve.targetMonth && <p className="summary-note">{formatMonthJa(reserve.targetMonth)}に使う</p>}
           {note && <p className="summary-note">{note}</p>}
           {plannedNote && <p className="summary-note">{plannedNote}</p>}
+          {reserve.repeat && last && (
+            <p className="summary-note">
+              前回 {shortDate(last.date)}・{formatYen(last.amount)}
+            </p>
+          )}
           <div className="actions center">
             <button type="button" className="primary-btn" onClick={() => setSheet("assign")}>
               入れる
@@ -92,6 +113,13 @@ export function ReserveDetailView({ reserve, bundle, today, usable, onBack, onCh
               戻す
             </button>
           </div>
+          {refill > 0 && (
+            <div className="actions center">
+              <button type="button" className="secondary-btn" disabled={refilling} onClick={doRefill}>
+                目標額まで補充（{formatYen(refill)}）
+              </button>
+            </div>
+          )}
         </section>
         <h2 className="list-group-title">出し入れの履歴</h2>
         {history.length === 0 ? (
