@@ -14,11 +14,12 @@ function stampServiceWorkerVersion(): Plugin {
     configResolved(config) {
       outDir = config.build.outDir;
     },
-    closeBundle() {
-      const swPath = resolve(outDir, "sw.js");
+    writeBundle(options, bundle) {
+      const swPath = resolve(options.dir ?? outDir, "sw.js");
       const source = readFileSync(swPath, "utf8");
       const version = new Date().toISOString().replace(/[-:.TZ]/g, "");
-      writeFileSync(swPath, source.replaceAll("__BUILD_VERSION__", version));
+      const assets = Object.values(bundle).map((item) => `./${item.fileName}`).filter((name) => /\.(?:js|css)$/.test(name));
+      writeFileSync(swPath, source.replaceAll("__BUILD_VERSION__", version).replace("/* __BUILD_ASSETS__ */ []", JSON.stringify(assets)));
     },
   };
 }
