@@ -101,7 +101,7 @@ function UsableBreakdown({ summary, onClose }: { summary: HomeSummary; onClose: 
         </ul>
       )}
       <p className="muted small breakdown-note">
-        残り{u.days}日（今日から給料日の前日まで）。給料日より前に入る収入は足していません。
+        残り{u.days}日（今日から給料日の前日まで）。先の日付の収入は、その日が来るまで残高・使える額に足しません。先の日付の支出は、次の給料日の前日までなら「決まった出費」として先に引きます。
       </p>
       <div className="sheet-actions">
         <button type="button" className="secondary-btn" onClick={onClose}>

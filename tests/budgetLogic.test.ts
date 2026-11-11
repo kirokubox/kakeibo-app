@@ -189,6 +189,17 @@ test("変動費：タグあり・立替を除く・取り置きから払った�
   assert.deepEqual(bars.slice(0, 3).map((b) => b.amount), [3500, 800, 0]);
 });
 
+test("今週の使った額：今週内の先の日付と週末は入り、来週と前週は入らない", () => {
+  const txs = [
+    tx("past-boundary", { date: "2026-11-08", amount: 100, tag: "daily" }),
+    tx("today", { date: "2026-11-11", amount: 200, tag: "daily" }),
+    tx("future-this-week", { date: "2026-11-13", amount: 300, tag: "satisfied" }),
+    tx("week-end", { date: "2026-11-15", amount: 400, tag: "regret" }),
+    tx("next-week", { date: "2026-11-16", amount: 500, tag: "daily" }),
+  ];
+  assert.equal(variableSpent(txs, { start: "2026-11-09", end: "2026-11-15" }, new Map()), 200 + 300 + 400);
+});
+
 test("給料の判定：給与の分類・給料明細から入れた収入。削除済み・ほかの収入は違う", () => {
   const cats = new Map([
     ["seed:income:給与", category("seed:income:給与", { kind: "income" })],

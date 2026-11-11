@@ -127,6 +127,7 @@ export function WeekCard({ week, bars, figure, today, hasData, onRecalc, limitTe
             </>
           )}
           <DayBars bars={bars} today={today} />
+          <span className="home-hint">使った額は明細の日付で数えます。今週内の先の日付は今週に入り、来週以降は入りません。</span>
           {limitText && <span className="home-limit">{limitText}</span>}
         </>
       )}
