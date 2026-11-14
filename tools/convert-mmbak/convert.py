@@ -322,17 +322,34 @@ def mm_balances(con: sqlite3.Connection) -> dict[str, Decimal]:
 # ---------------------------------------------------------------------------
 # 本体
 # ---------------------------------------------------------------------------
-def convert(db_path: Path, mapping: dict, now_iso: str, source_file_name: str | None = None, profile: dict | None = None) -> dict:
+DEFAULT_IMPORT_FROM = "2022-03-01"
+
+
+def convert(
+    db_path: Path,
+    mapping: dict,
+    now_iso: str,
+    source_file_name: str | None = None,
+    profile: dict | None = None,
+    import_from: str | None = None,
+) -> dict:
     """変換して {'backup': ..., 'stats': ...} を返す。profile（本人用の初期データ）を渡すと、その分類・設定・印を出力に入れる"""
     con = open_readonly(db_path)
     try:
-        return _convert(con, mapping, now_iso, source_file_name or db_path.name, profile)
+        return _convert(con, mapping, now_iso, source_file_name or db_path.name, profile, import_from)
     finally:
         con.close()
 
 
-def _convert(con: sqlite3.Connection, mapping: dict, now_iso: str, source_file_name: str, profile: dict | None = None) -> dict:
-    start = mapping.get("importFrom", "2022-03-01")
+def _convert(
+    con: sqlite3.Connection,
+    mapping: dict,
+    now_iso: str,
+    source_file_name: str,
+    profile: dict | None = None,
+    import_from: str | None = None,
+) -> dict:
+    start = import_from or mapping.get("importFrom", DEFAULT_IMPORT_FROM)
     stats: dict = {"importFrom": start, "anomalies": [], "notes": []}
     anomalies: list[str] = stats["anomalies"]
 
@@ -883,8 +900,19 @@ def reconcile(backup: dict, mm_bal: dict[str, Decimal], asset_info: dict) -> lis
         uid = acc["id"][len("mm-asset-") :]
         mm = mm_bal.get(uid, Decimal(0))
         diff = Decimal(app[acc["id"]]) - mm
-        out.append({"name": acc["name"], "group": acc["group"], "hidden": acc["hidden"], "mm": mm, "app": app[acc["id"]], "diff": diff})
+        out.append({"id": acc["id"], "name": acc["name"], "group": acc["group"], "hidden": acc["hidden"], "mm": mm, "app": app[acc["id"]], "diff": diff})
     return out
+
+
+def add_comparison_balances(result: dict, comparison: dict) -> None:
+    """以前の変換JSONの残高を照合表へ足す。元の結果・比較JSONは変更しない。"""
+    problem = validate_backup(comparison)
+    if problem is not None:
+        raise ConvertError(f"比較用JSONを読めません：{problem}")
+    balances = compute_app_balances(comparison["accounts"], comparison["transactions"])
+    for row in result["stats"]["recon"]:
+        row["comparison"] = balances.get(row["id"])
+    result["stats"]["comparison_accounts"] = len(comparison["accounts"])
 
 
 # ---------------------------------------------------------------------------
@@ -1207,13 +1235,30 @@ def render_report(result: dict, mmbak_name: str, mmbak_exported: str, converted_
     w("")
     w("「らくな家計簿の今の残高」＝初期残高＋全期間の有効な明細（SQLで別に計算）。「取り込んだJSONでの残高」＝初期残高（繰り込み後）＋取り込んだ明細（アプリの `computeBalances` と同じ式）。")
     w("")
-    w("| 資産 | 種類 | 表示 | らくな家計簿の今の残高 | 取り込んだJSONでの残高 | 差 |")
-    w("|---|---|---|---:|---:|---:|")
-    for r in recon:
-        w(f"| {r['name']} | {r['group']} | {'非表示' if r['hidden'] else '表示'} | {_dec(r['mm'])} | {yen_text(r['app'])} | {_dec(r['diff'])} |")
+    has_comparison = "comparison_accounts" in s
+    if has_comparison:
+        w("(a) は元アプリの全期間、(b) は今回の全期間JSON、(c) は従来の2022-03以降JSONで、いずれも同じ時点の残高です。`—` は従来変換にその資産が無かったことを表します。")
+        w("")
+        w("| 資産 | 種類 | 表示 | (a) らくな家計簿 | (b) 全期間JSON | (c) 従来JSON | (b)-(a) | (c)-(a) |")
+        w("|---|---|---|---:|---:|---:|---:|---:|")
+        for r in recon:
+            c = r.get("comparison")
+            c_text = "—" if c is None else yen_text(c)
+            c_diff = "—" if c is None else _dec(Decimal(c) - r["mm"])
+            w(f"| {r['name']} | {r['group']} | {'非表示' if r['hidden'] else '表示'} | {_dec(r['mm'])} | {yen_text(r['app'])} | {c_text} | {_dec(r['diff'])} | {c_diff} |")
+    else:
+        w("| 資産 | 種類 | 表示 | らくな家計簿の今の残高 | 取り込んだJSONでの残高 | 差 |")
+        w("|---|---|---|---:|---:|---:|")
+        for r in recon:
+            w(f"| {r['name']} | {r['group']} | {'非表示' if r['hidden'] else '表示'} | {_dec(r['mm'])} | {yen_text(r['app'])} | {_dec(r['diff'])} |")
     w("")
     n_ok = sum(1 for r in recon if r["diff"] == 0)
     w(f"**結果：{n_ok} / {len(recon)} 資産で一致。**" + ("全部一致です。" if all_match else "差のある資産があります。原因の候補：組のない振替、手数料の結び、丸め、残高修正の符号。"))
+    if has_comparison:
+        compared = [r for r in recon if r.get("comparison") is not None]
+        prior_ok = sum(1 for r in compared if Decimal(r["comparison"]) == r["mm"])
+        missing = len(recon) - len(compared)
+        w(f"従来JSONとの比較は {prior_ok} / {len(compared)} 資産で一致。従来JSONに無い全期間のみの資産は {missing} 件です。")
     w("")
     if s["unused_assets_with_balance"]:
         w("取り込まない資産（取り込み期間に明細がない）のうち、残高が0でないもの：")
@@ -1360,6 +1405,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("mmbak", type=Path)
     ap.add_argument("mapping", type=Path)
     ap.add_argument("--profile", type=Path, help="本人用の初期データ（make_profile.py で作ったJSON）。渡すと分類と設定を出力に入れ、付け替え先の確認もその分類で行う")
+    ap.add_argument("--from", dest="import_from", help=f"取り込み開始日（YYYY-MM-DD）。省略時は mapping.json の importFrom、無ければ {DEFAULT_IMPORT_FROM}")
+    ap.add_argument("--compare-json", type=Path, help="残高照合の(c)列に使う従来の変換JSON")
     ap.add_argument("--out-dir", type=Path, default=Path("."), help="JSONとレポートの出力先（--json-dir・--report-dir を渡さないとき）")
     ap.add_argument("--json-dir", type=Path)
     ap.add_argument("--report-dir", type=Path)
@@ -1368,6 +1415,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.mmbak.is_file():
         print(f"ファイルがありません: {args.mmbak}", file=sys.stderr)
+        return 2
+    if args.import_from is not None and not is_local_date(args.import_from):
+        print("--from は YYYY-MM-DD 形式の実在する日付で指定してください", file=sys.stderr)
         return 2
     try:
         profile = load_profile(args.profile) if args.profile else None
@@ -1382,11 +1432,20 @@ def main(argv: list[str] | None = None) -> int:
     json_dir.mkdir(parents=True, exist_ok=True)
     report_dir.mkdir(parents=True, exist_ok=True)
 
-    result = convert(args.mmbak, mapping, now, args.mmbak.name, profile)
+    result = convert(args.mmbak, mapping, now, args.mmbak.name, profile, args.import_from)
+    if args.compare_json is not None:
+        try:
+            comparison = json.loads(args.compare_json.read_text(encoding="utf-8"))
+            add_comparison_balances(result, comparison)
+        except (OSError, json.JSONDecodeError, ConvertError) as e:
+            print(str(e), file=sys.stderr)
+            return 2
     s = result["stats"]
     problem = validate_backup(result["backup"])
 
-    json_path = json_dir / f"kakeibo-import-from-mmbak-{ymd}.json"
+    full = args.import_from is not None and args.import_from != mapping.get("importFrom", DEFAULT_IMPORT_FROM)
+    output_ymd = now[:10].replace("-", "") if full else ymd
+    json_path = json_dir / (f"kakeibo-import-from-mmbak-full-{output_ymd}.json" if full else f"kakeibo-import-from-mmbak-{ymd}.json")
     json_path.write_text(json.dumps(result["backup"], ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     report = render_report(
         result,
@@ -1397,7 +1456,7 @@ def main(argv: list[str] | None = None) -> int:
         sha256_of(args.mmbak),
         problem,
     )
-    report_path = report_dir / f"{ymd}_取り込みレポート.md"
+    report_path = report_dir / (f"{output_ymd}_全期間取り込みレポート.md" if full else f"{ymd}_取り込みレポート.md")
     report_path.write_text(report, encoding="utf-8")
 
     recon = s["recon"]

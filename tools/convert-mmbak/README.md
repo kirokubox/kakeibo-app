@@ -18,11 +18,20 @@
 python convert.py <.mmbakのパス> <mapping.jsonのパス> --profile <本人用の初期データ.json> --json-dir <JSONの出力先> --report-dir <レポートの出力先>
 ```
 
+全期間を変換するときだけ開始日を明示します（省略時の開始日は従来どおりです）。
+
+```
+python convert.py <.mmbakのパス> <mapping.jsonのパス> --profile <本人用の初期データ.json> --from 2015-08-01 --json-dir <JSONの出力先> --report-dir <レポートの出力先>
+```
+
 - `--profile` を渡すと、出力のJSONに本人の分類（`categories`）・設定（`settings`）・`profile` の印を入れる。**新しい端末に、このファイル1つを「設定も読み込む」オンで取り込むだけで、分類・設定・明細・資産・繰り返し・よく使う入力がそろう**。渡さないときは `categories` は空で、設定は一般向けの初期値（このときは「設定も読み込む」をオフのままにする）。レポートに「本人用の初期データを含む」と出る。
 - `mapping.json` の付け替え先（と `fallback`）が実在するかは、`--profile` の分類（表示中のもの）の一覧で確かめる。`--profile` を渡さないときは、名前の確認はしない（形だけ確かめる）。
 
 - `--out-dir` だけを渡すと、JSONとレポートを同じフォルダに出します。
+- `--from YYYY-MM-DD` を渡したときだけ、`mapping.json` の `importFrom` より前まで対象を広げます。省略時は `mapping.json` の値（無ければ `2022-03-01`）なので、従来の変換結果は変わりません。
+- `--compare-json <従来の変換JSON>` を渡すと、残高照合表へ従来JSONの残高を加え、元アプリ・全期間JSON・従来JSONの3つを並べます。
 - 出力ファイル名は、`.mmbak` のファイル名の日付から決まります（例：`MM(2026-09-30-225019).mmbak` → `kakeibo-import-from-mmbak-20260930.json` と `20260930_取り込みレポート.md`）。
+- `--from` で従来より前から変換した場合は、取り違えを防ぐため `kakeibo-import-from-mmbak-full-YYYYMMDD.json` と `YYYYMMDD_全期間取り込みレポート.md` になります。
 - 終了コードは、残高の照合が全資産で一致し、JSONの検証も通ったときだけ 0 です。
 - Windows で日本語が文字化けするときは `PYTHONIOENCODING=utf-8` を付けてください（ファイルは常に UTF-8 で書きます）。
 

@@ -313,6 +313,24 @@ class TestAccountsAndBalances(ConvertTestBase):
         self.assertEqual(accs["mm-asset-C"]["openingBalance"], 0)
         self.assertEqual(accs["mm-asset-S"]["openingBalance"], 0)  # AMOUNT が空
 
+    def test_explicit_from_imports_old_rows_and_does_not_fold_them_into_opening_balance(self):
+        build_db(self.db)
+        r = cv.convert(self.db, self.mapping, NOW, import_from="2015-08-01")
+        ids = {t["id"] for t in r["backup"]["transactions"]}
+        for old in ("mm-u1", "mm-u2", "mm-u3", "mm-u5"):
+            self.assertIn(old, ids)
+        self.assertNotIn("mm-u4", ids)  # 古い振替の「入」は u3（出）と1件にまとめる
+        accs = self.by_id(r, "accounts")
+        self.assertEqual(accs["mm-asset-W"]["openingBalance"], 1000)
+        self.assertEqual(accs["mm-asset-B"]["openingBalance"], 50000)
+        self.assertEqual(r["backup"]["source"]["importFrom"], "2015-08-01")
+
+    def test_default_result_is_unchanged_when_default_from_is_explicit(self):
+        r1 = self.run_convert()
+        r2 = cv.convert(self.db, self.mapping, NOW, import_from="2022-03-01")
+        self.assertEqual(r1["backup"], r2["backup"])
+        self.assertEqual(r1["stats"]["recon"], r2["stats"]["recon"])
+
     def test_reconciliation_matches_for_every_account(self):
         r = self.run_convert()
         recon = r["stats"]["recon"]
@@ -325,6 +343,18 @@ class TestAccountsAndBalances(ConvertTestBase):
         self.assertEqual(wallet["app"], 12600 - 300 - 200 - 150 - 100 - 160 - 90 + 700 + 5000 - 100 + 50 - 80 + 25 - 35 - 100 - 800 - 120 - 130)
         card = next(x for x in recon if x["name"] == "テストカード")
         self.assertEqual(card["app"], -4000)
+
+    def test_comparison_json_adds_prior_balance_without_changing_comparison(self):
+        full = self.run_convert()
+        prior = copy.deepcopy(full["backup"])
+        prior["accounts"] = prior["accounts"][:-1]
+        prior["transactions"] = [t for t in prior["transactions"] if t["accountId"] != "mm-asset-S" and t.get("toAccountId") != "mm-asset-S"]
+        before = copy.deepcopy(prior)
+        cv.add_comparison_balances(full, prior)
+        rows = {r["id"]: r for r in full["stats"]["recon"]}
+        self.assertEqual(rows["mm-asset-W"]["comparison"], rows["mm-asset-W"]["app"])
+        self.assertIsNone(rows["mm-asset-S"]["comparison"])
+        self.assertEqual(prior, before)
 
     def test_orphan_row_shows_up_as_difference(self):
         r = self.run_convert(orphan=True)
@@ -548,6 +578,24 @@ class TestOutputShape(ConvertTestBase):
         text = rep.read_text(encoding="utf-8")
         self.assertIn("4 / 4 資産で一致", text)
         self.assertIn("要確認", text)
+
+    def test_cli_from_writes_full_period_names(self):
+        build_db(self.db)
+        out_json = self.dir / "j"
+        out_rep = self.dir / "r"
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = cv.main([str(self.db), str(SAMPLE_MAPPING), "--from", "2015-08-01", "--json-dir", str(out_json), "--report-dir", str(out_rep), "--now", NOW])
+        self.assertEqual(code, 0)
+        self.assertTrue((out_json / "kakeibo-import-from-mmbak-full-20261026.json").is_file())
+        self.assertTrue((out_rep / "20261026_全期間取り込みレポート.md").is_file())
+
+    def test_cli_rejects_bad_from(self):
+        build_db(self.db)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = cv.main([str(self.db), str(SAMPLE_MAPPING), "--from", "2015-02-30", "--out-dir", str(self.dir / "o")])
+        self.assertEqual(code, 2)
+        self.assertIn("YYYY-MM-DD", err.getvalue())
 
     def test_cli_returns_nonzero_when_balances_differ(self):
         build_db(self.db, orphan=True)
