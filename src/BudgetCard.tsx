@@ -84,7 +84,7 @@ function Remaining({ remaining, unit }: { remaining: number; unit: string }) {
 }
 
 /** 一番大きい数字のカード(今週)。設定 homeMainFigure で「あと◯円」か「使った額」を大きく出す */
-export function WeekCard({ week, bars, figure, today, hasData, onRecalc, limitText, manual }: Common & { week: BudgetFigure; bars: BarProps["bars"]; figure: HomeMainFigure; today: string; hasData: boolean }) {
+export function WeekCard({ week, bars, topCategories, figure, today, hasData, onRecalc, limitText, manual }: Common & { week: BudgetFigure; bars: BarProps["bars"]; topCategories: Array<{ id: string | null; name: string; amount: number }>; figure: HomeMainFigure; today: string; hasData: boolean }) {
   const budget = week.snapshot?.amount ?? null;
   return (
     <section className="card home-card main-card" aria-label="今週">
@@ -127,6 +127,19 @@ export function WeekCard({ week, bars, figure, today, hasData, onRecalc, limitTe
             </>
           )}
           <DayBars bars={bars} today={today} />
+          {week.remaining < 0 && topCategories.length > 0 && (
+            <div className="week-top-categories">
+              <span className="home-label">今週多かったもの</span>
+              <ul>
+                {topCategories.map((category) => (
+                  <li key={category.id ?? "none"}>
+                    <span>{category.name}</span>
+                    <span>{formatYen(category.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <span className="home-hint">使った額は明細の日付で数えます。今週内の先の日付は今週に入り、来週以降は入りません。</span>
           {limitText && <span className="home-limit">{limitText}</span>}
         </>

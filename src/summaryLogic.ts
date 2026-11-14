@@ -231,6 +231,56 @@ export function tagBreakdown(txs: readonly Transaction[], range: DateRange): { t
   return { total, rows: TAG_KEYS.map((tag) => ({ tag, amount: sums[tag], ratio: total > 0 ? sums[tag] / total : 0 })) };
 }
 
+export interface TagCategoryRow {
+  id: Id | null;
+  name: string;
+  count: number;
+  amount: number;
+}
+
+export interface TagDetail {
+  count: number;
+  total: number;
+  categories: TagCategoryRow[];
+  transactions: Transaction[];
+}
+
+/** 選んだタグの件数・親分類別・明細。合計と並びはタグ集計と同じ countedExpense を使う */
+export function tagDetail(
+  txs: readonly Transaction[],
+  categories: readonly Category[],
+  tag: Tag,
+  range: DateRange,
+): TagDetail {
+  const byId = new Map(categories.map((category) => [category.id, category]));
+  const transactions = txs
+    .filter((transaction) => transaction.deletedAt === null && transaction.type === "expense" && transaction.tag === tag && inRange(transaction.date, range) && countedExpense(transaction) > 0)
+    .sort((a, b) => countedExpense(b) - countedExpense(a) || b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  const groups = new Map<string, { count: number; amount: number }>();
+  for (const transaction of transactions) {
+    const category = transaction.categoryId ? byId.get(transaction.categoryId) : undefined;
+    const parentId = category ? (category.parentId ?? category.id) : "";
+    const current = groups.get(parentId) ?? { count: 0, amount: 0 };
+    current.count += 1;
+    current.amount += countedExpense(transaction);
+    groups.set(parentId, current);
+  }
+  const categoryRows = [...groups.entries()]
+    .map(([id, value]) => ({
+      id: id || null,
+      name: id ? (byId.get(id)?.name ?? "分類不明") : "分類なし",
+      count: value.count,
+      amount: value.amount,
+    }))
+    .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name, "ja"));
+  return {
+    count: transactions.length,
+    total: transactions.reduce((sum, transaction) => sum + countedExpense(transaction), 0),
+    categories: categoryRows,
+    transactions,
+  };
+}
+
 export interface TagMonth {
   month: string;
   values: Record<TagKey, number>;

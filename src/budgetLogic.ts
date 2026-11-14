@@ -128,6 +128,38 @@ export function variableByDay(txs: readonly Transaction[], start: string, days: 
   });
 }
 
+export interface VariableCategoryTotal {
+  id: Id | null;
+  name: string;
+  amount: number;
+}
+
+/** 期間の変動費を親分類でまとめる。金額の数え方は variableSpent と同じ */
+export function variableCategoryTotals(
+  txs: readonly Transaction[],
+  categories: readonly Category[],
+  span: DateSpan,
+  spent: ReadonlyMap<Id, number>,
+): VariableCategoryTotal[] {
+  const byId = new Map(categories.map((category) => [category.id, category]));
+  const totals = new Map<string, number>();
+  for (const transaction of txs) {
+    if (!inRange(transaction.date, span)) continue;
+    const amount = variableAmount(transaction, spent);
+    if (amount <= 0) continue;
+    const category = transaction.categoryId ? byId.get(transaction.categoryId) : undefined;
+    const parentId = category ? (category.parentId ?? category.id) : "";
+    totals.set(parentId, (totals.get(parentId) ?? 0) + amount);
+  }
+  return [...totals.entries()]
+    .map(([id, amount]) => ({
+      id: id || null,
+      name: id ? (byId.get(id)?.name ?? "分類不明") : "分類なし",
+      amount,
+    }))
+    .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name, "ja"));
+}
+
 // ---- 給料 ----
 
 /** 初期分類「給与」（大分類）の ID。この下の分類の収入、または給料明細から入れた収入を「給料」とみなす */
@@ -667,7 +699,7 @@ export interface HomeSummary {
   hasTransactions: boolean;
   /** 資産も明細もない（はじめて開いた人）。内訳の数字・見通しの表は出さず、「はじめに」を出す */
   firstUse: boolean;
-  week: BudgetFigure & { bars: Array<{ date: string; amount: number }> };
+  week: BudgetFigure & { bars: Array<{ date: string; amount: number }>; topCategories: VariableCategoryTotal[] };
   month: BudgetFigure;
   reserveTotal: number;
   /** 今の給料日が来ているのに給料がまだ入っていない（その給料日） */
@@ -722,6 +754,7 @@ export function summarizeHome(data: BudgetData, snapshots: readonly BudgetSnapsh
       spent: weekSpent,
       remaining: weekSnap ? weekSnap.amount - weekSpent : null,
       bars: variableByDay(txs, weekSpan.start, spanDays(weekSpan), spentMap),
+      topCategories: variableCategoryTotals(txs, data.categories, weekSpan, spentMap).slice(0, 3),
     },
     month: {
       start: monthRangeNow.start,

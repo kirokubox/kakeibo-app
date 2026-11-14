@@ -16,6 +16,7 @@ import {
   summaryRange,
   switchDay,
   tagBreakdown,
+  tagDetail,
   tagTrend,
   weekBudgetBars,
 } from "../src/summaryLogic.js";
@@ -142,6 +143,24 @@ test("タグ別：日常・満足・反省・なし（立替を除く）と直�
   assert.equal(t.length, 12);
   assert.deepEqual(t[11].values, { daily: 1000, satisfied: 2000, regret: 500, none: 3000 });
   assert.equal(t[10].values.daily, 300);
+});
+
+test("タグの詳細：件数・親分類別・明細を金額の大きい順で返す", () => {
+  const list = [
+    tx("a", { categoryId: "c1", tag: "satisfied", amount: 1000 }),
+    tx("b", { categoryId: "c2", tag: "satisfied", amount: 2500, reimbursement: { counterparty: "テスト", amount: 500 } }),
+    tx("c", { categoryId: "c3", tag: "satisfied", amount: 1500 }),
+    tx("d", { categoryId: "c1", tag: "regret", amount: 9999 }),
+    tx("e", { categoryId: "c1", tag: "satisfied", amount: 5000, date: "2026-09-30" }),
+  ];
+  const detail = tagDetail(list, cats, "satisfied", OCT);
+  assert.equal(detail.count, 3);
+  assert.equal(detail.total, 4500);
+  assert.deepEqual(detail.categories, [
+    { id: "p1", name: "食費", count: 2, amount: 3000 },
+    { id: "p2", name: "趣味", count: 1, amount: 1500 },
+  ]);
+  assert.deepEqual(detail.transactions.map((transaction) => transaction.id), ["b", "c", "a"]);
 });
 
 test("月ごとの収入と支出：差額つき、返金は充てた額を除く", () => {

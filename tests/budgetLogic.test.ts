@@ -16,6 +16,7 @@ import {
   salaryEntered,
   summarizeHome,
   variableByDay,
+  variableCategoryTotals,
   variableSpent,
   weekBudgetPlan,
   weekTailPlan,
@@ -187,6 +188,28 @@ test("変動費：タグあり・立替を除く・取り置きから払った�
   const bars = variableByDay(txs, "2026-10-26", 7, spent);
   assert.equal(bars.length, 7);
   assert.deepEqual(bars.slice(0, 3).map((b) => b.amount), [3500, 800, 0]);
+});
+
+test("変動費の親分類別：週の使った額と同じ集合を金額順にまとめる", () => {
+  const categories = [
+    category("p1", { name: "食べもの" }),
+    category("c1", { parentId: "p1", name: "昼食" }),
+    category("c2", { parentId: "p1", name: "夕食" }),
+    category("p2", { name: "楽しみ" }),
+    category("c3", { parentId: "p2", name: "本" }),
+  ];
+  const txs = [
+    tx("a", { categoryId: "c1", amount: 1200, tag: "daily" }),
+    tx("b", { categoryId: "c2", amount: 2000, tag: "satisfied", reimbursement: { counterparty: "テスト", amount: 500 } }),
+    tx("c", { categoryId: "c3", amount: 3000, tag: "regret", reserveId: "rs1" }),
+    tx("d", { categoryId: "c3", amount: 9000 }),
+    tx("e", { categoryId: "c1", amount: 5000, tag: "daily", date: "2026-09-30" }),
+  ];
+  const spent = spendByTx([move("m1", "rs1", "spend", 2500, "2026-10-01", "c")]);
+  assert.deepEqual(variableCategoryTotals(txs, categories, { start: "2026-10-01", end: "2026-10-07" }, spent), [
+    { id: "p1", name: "食べもの", amount: 2700 },
+    { id: "p2", name: "楽しみ", amount: 500 },
+  ]);
 });
 
 test("今週の使った額：今週内の先の日付と週末は入り、来週と前週は入らない", () => {

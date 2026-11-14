@@ -143,6 +143,7 @@ export function HomeView({ tabBar, today, version, settings, onOpenSettings, onA
             <WeekCard
               week={summary.week}
               bars={summary.week.bars}
+              topCategories={summary.week.topCategories}
               figure={settings.homeMainFigure}
               today={today}
               hasData={summary.hasTransactions}

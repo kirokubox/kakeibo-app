@@ -619,6 +619,9 @@ button.home-card:active { background: var(--kb-surface-2); }
 .home-big { font-size: 1.75rem; font-weight: 700; line-height: 1.3; font-variant-numeric: tabular-nums; }
 .home-big.caution { font-size: var(--kb-fs-xl); }
 .home-sub { display: flex; flex-wrap: wrap; gap: var(--kb-space-1) var(--kb-space-4); color: var(--kb-text-2); font-size: var(--kb-fs-s); font-variant-numeric: tabular-nums; }
+.week-top-categories { display: grid; gap: var(--kb-space-1); margin-top: var(--kb-space-1); padding-top: var(--kb-space-3); border-top: 1px solid var(--kb-line); }
+.week-top-categories ul { display: grid; gap: var(--kb-space-1); margin: 0; padding: 0; list-style: none; }
+.week-top-categories li { display: flex; justify-content: space-between; gap: var(--kb-space-3); color: var(--kb-text-2); font-size: var(--kb-fs-s); font-variant-numeric: tabular-nums; }
 .home-limit { color: var(--kb-text-2); font-size: var(--kb-fs-s); font-variant-numeric: tabular-nums; }
 .debit-list .list-row.static { align-items: flex-start; }
 .debit-list .caution { color: var(--kb-caution, #b3261e); }
@@ -710,8 +713,14 @@ button.home-card:active { background: var(--kb-surface-2); }
 .cat-list .legend-dot { margin-right: 0; }
 .cat-ratio { color: var(--kb-text-2); font-size: var(--kb-fs-s); font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
 .tag-bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--kb-space-3); }
+.tag-bar-button { display: grid; gap: var(--kb-space-1); width: 100%; color: inherit; text-align: left; }
+.tag-bar-button:not(.static):active { opacity: 0.72; }
+.tag-bar-button.static { cursor: default; }
+.tag-bar-button:disabled { opacity: 1; }
 .tag-bar-head { display: flex; justify-content: space-between; gap: var(--kb-space-2); font-size: var(--kb-fs-m); }
 .tag-bar-amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tag-detail-list .list > li { position: relative; padding-top: 20px; }
+.tag-detail-date { position: absolute; top: 5px; left: var(--kb-space-3); z-index: 1; color: var(--kb-text-3); font-size: var(--kb-fs-xs); font-variant-numeric: tabular-nums; }
 .hbar { height: 10px; margin-top: 4px; border-radius: var(--kb-radius-pill); background: var(--kb-surface-2); overflow: hidden; }
 .hbar span { display: block; height: 100%; border-radius: var(--kb-radius-pill); }
 

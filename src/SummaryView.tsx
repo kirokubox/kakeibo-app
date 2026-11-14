@@ -30,12 +30,14 @@ import {
   summaryRange,
   switchDay,
   tagBreakdown,
+  tagDetail,
   tagTrend,
   weekBudgetBars,
 } from "./summaryLogic";
 import type { CategoryRow, SummaryPeriod, SummaryPeriodKind, TagKey } from "./summaryLogic";
 import { useToast } from "./Toast";
-import type { CategoryKind, Id, Transaction, WeekStart } from "./types";
+import { TxRow } from "./TxRow";
+import type { CategoryKind, Id, Tag, Transaction, WeekStart } from "./types";
 
 interface Props {
   tabBar: ReactNode;
@@ -74,6 +76,7 @@ export function SummaryView({ tabBar, today, weekStart, version, onOpenSettings,
   const [period, setPeriod] = useState<SummaryPeriod>(() => periodAround("month", today, undefined, weekStart));
   const [kind, setKind] = useState<CategoryKind>("expense");
   const [path, setPath] = useState<DrillStep[]>([]);
+  const [selectedTag, setSelectedTag] = useState<Tag | null>(null);
   const [assetSel, setAssetSel] = useState<Id[]>([]);
   const [adjusting, setAdjusting] = useState<Transaction | null>(null);
   const [toast, showToast] = useToast();
@@ -141,13 +144,18 @@ export function SummaryView({ tabBar, today, weekStart, version, onOpenSettings,
 
   const header = (
     <header className="topbar">
-      {path.length > 0 && (
-        <button type="button" className="icon-btn" aria-label="戻る" onClick={() => setPath((p) => p.slice(0, -1))}>
+      {(path.length > 0 || selectedTag !== null) && (
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="戻る"
+          onClick={() => selectedTag !== null ? setSelectedTag(null) : setPath((p) => p.slice(0, -1))}
+        >
           <Icon name="chevron-left" size={22} />
         </button>
       )}
-      <h1 className="topbar-title">{path.length > 0 ? path[path.length - 1].name : "集計"}</h1>
-      {path.length === 0 && (
+      <h1 className="topbar-title">{selectedTag ? TAG_KEY_LABELS[selectedTag] : path.length > 0 ? path[path.length - 1].name : "集計"}</h1>
+      {path.length === 0 && selectedTag === null && (
         <button type="button" className="icon-btn" aria-label="設定" onClick={onOpenSettings}>
           <Icon name="settings" size={22} />
         </button>
@@ -160,6 +168,65 @@ export function SummaryView({ tabBar, today, weekStart, version, onOpenSettings,
     if (tx.type === "adjustment") setAdjusting(tx);
     else onEdit(tx);
   };
+
+  // ---- タグの画面（日常・満足・反省） ----
+  if (selectedTag && data && txs && categories) {
+    const detail = tagDetail(txs, categories, selectedTag, range);
+    return (
+      <>
+        {header}
+        <main className="content entries-content summary-content">
+          {periodControls}
+          <section className="card band" aria-label={`${TAG_KEY_LABELS[selectedTag]}の合計`}>
+            <div>
+              <p className="band-label">件数</p>
+              <p className="band-value">{detail.count}件</p>
+            </div>
+            <div>
+              <p className="band-label">合計</p>
+              <p className="band-value expense">{formatYen(detail.total)}</p>
+            </div>
+          </section>
+          <section className="card summary-section" aria-label="分類ごとの回数と金額">
+            <h2>分類ごとの回数と金額</h2>
+            {detail.categories.length === 0 ? (
+              <p className="empty-note">この期間の明細はありません</p>
+            ) : (
+              <ul className="list">
+                {detail.categories.map((category) => (
+                  <li key={category.id ?? "none"} className="list-row static">
+                    <span className="list-main">
+                      <span className="list-name">{category.name}</span>
+                      <span className="list-sub">{category.count}回</span>
+                    </span>
+                    <span className="list-amount">{formatYen(category.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <h2 className="list-group-title">明細（金額の大きい順）</h2>
+          {detail.transactions.length > 0 ? (
+            <section className="card list-card tag-detail-list">
+              <ul className="list">
+                {detail.transactions.map((transaction) => (
+                  <li key={transaction.id}>
+                    <span className="tag-detail-date">{transaction.date}</span>
+                    <TxRow tx={transaction} accountNames={accountNames} categories={categories} onSelect={select} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : (
+            <p className="empty-note">この期間の明細はありません</p>
+          )}
+          <div className="fab-space" aria-hidden="true" />
+        </main>
+        {tabBar}
+        {toast}
+      </>
+    );
+  }
 
   // ---- 分類の画面（大分類→小分類） ----
   if (path.length > 0 && data && txs && categories && breakdown) {
@@ -301,6 +368,12 @@ export function SummaryView({ tabBar, today, weekStart, version, onOpenSettings,
             <ul className="tag-bars">
               {tags.rows.map((r) => (
                 <li key={r.tag}>
+                  <button
+                    type="button"
+                    className={`tag-bar-button${r.tag === "none" ? " static" : ""}`}
+                    disabled={r.tag === "none"}
+                    onClick={() => r.tag !== "none" && setSelectedTag(r.tag as Tag)}
+                  >
                   <div className="tag-bar-head">
                     <span>
                       <span className="legend-dot" style={{ background: TAG_COLORS[r.tag] }} />
@@ -310,10 +383,12 @@ export function SummaryView({ tabBar, today, weekStart, version, onOpenSettings,
                     <span className="tag-bar-amount">
                       {formatYen(r.amount)}（{percent(r.ratio)}）
                     </span>
+                    {r.tag !== "none" && <Icon name="chevron-right" size={16} />}
                   </div>
                   <div className="hbar">
                     <span style={{ width: `${Math.round(r.ratio * 100)}%`, background: TAG_COLORS[r.tag] }} />
                   </div>
+                  </button>
                 </li>
               ))}
             </ul>
