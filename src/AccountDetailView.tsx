@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AdjustSheet } from "./AdjustSheet";
 import type { AdjustMode } from "./AdjustSheet";
 import { cardNote, nextDebitText, plannedBalanceNote, plannedEffects } from "./accountLogic";
-import { initialMonthCount, monthBlocks, runningBalances } from "./adjustLogic";
+import { checkDrift, initialMonthCount, monthBlocks, runningBalances } from "./adjustLogic";
+import { formatDateJa } from "./dateUtils";
 import { DayGroup } from "./DayGroup";
 import { Icon } from "./Icon";
 import { KebabMenu } from "./KebabMenu";
@@ -129,6 +130,9 @@ export function AccountDetailView({ account, accounts, balance, today, version, 
   const note = cardNote(account, accounts);
   const unpaid = unpaidAmount(balance);
   // 先の日付の明細（予定）を含めた残高。残高は今日までの明細で計算している
+  // 確かめた日（v0.15.0）と、その日以前の明細があとから変わったときのずれ
+  const check = account.lastCheck ?? null;
+  const drift = txs ? checkDrift(account, txs) : null;
   const plannedNote = plannedBalanceNote(balance, txs ? plannedEffects([account], txs, today).get(account.id) : undefined);
 
   return (
@@ -147,6 +151,11 @@ export function AccountDetailView({ account, accounts, balance, today, version, 
           {isCard && <p className="account-unpaid">未払い {formatYen(unpaid)}</p>}
           {plannedNote && <p className="list-sub">{plannedNote}</p>}
           {note && <p className="list-sub">{note}</p>}
+          {check && (
+            <p className="list-sub">
+              確かめた日 {formatDateJa(check.date)}（{isCard ? `未払い ${formatYen(unpaidAmount(check.balance))}` : formatYen(check.balance)}）
+            </p>
+          )}
           {isCard && nextDebitText(account, today) && <p className="list-sub">{nextDebitText(account, today)}</p>}
           {isCard && <p className="field-hint">請求額は、利用日から2〜3か月遅れて載るものがあります。「照合」で、請求額と明細を合わせられます。</p>}
           <div className="actions">
@@ -165,6 +174,11 @@ export function AccountDetailView({ account, accounts, balance, today, version, 
             )}
           </div>
         </section>
+        {check && drift !== null && drift !== 0 && (
+          <p className="notice warning" role="status">
+            {formatDateJa(check.date)}に確かめた残高から {drift > 0 ? "＋" : "−"}{formatYen(Math.abs(drift))} 変わっています。{formatDateJa(check.date)}以前の明細が、あとから足された・直された・消されたかもしれません。合っていれば「残高を合わせる」で、もう一度確かめてください。
+          </p>
+        )}
         {loadError && (
           <p className="notice danger" role="alert">
             {loadError}

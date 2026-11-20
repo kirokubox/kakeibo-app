@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { actualToBalance, adjustmentDiff, balanceAsOf, checkAdjustDiff, describeDiff, makeAdjustment } from "./adjustLogic";
+import { actualToBalance, adjustmentDiff, balanceAsOf, checkAdjustDiff, describeDiff, makeAdjustment, withBalanceCheck } from "./adjustLogic";
 import { unpaidAmount } from "./transferLogic";
 import { BottomSheet, ConfirmSheet } from "./BottomSheet";
 import { isLocalDate, nowIso } from "./dateUtils";
@@ -50,6 +50,33 @@ export function AdjustSheet({ account, mode, today, showToast, onChanged, onClos
   const diff = editing ? signed : actual !== null && appBalance !== null ? adjustmentDiff(appBalance, actualToBalance(account, actual)) : null;
   const check = checkAdjustDiff(diff);
   const canSave = check.ok && isLocalDate(date) && !busy;
+  // 新規で差額が0（合っている）とき：残高修正は作らず、「確かめた日」だけを残せる（v0.15.0）
+  const matched = !editing && diff === 0 && isLocalDate(date) && !busy;
+
+  /** 実際の残高と合った日を、資産の「確かめた日」として残す（v0.15.0）。失敗しても残高修正の保存は取り消さない */
+  const recordCheck = async () => {
+    if (editing || actual === null) return true;
+    try {
+      await saveRecord("accounts", { ...withBalanceCheck(account, date, actualToBalance(account, actual)), updatedAt: nowIso() });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const saveMatched = async () => {
+    if (!matched) return;
+    setBusy(true);
+    const ok = await recordCheck();
+    if (!ok) {
+      setFailure("確かめた日を保存できませんでした");
+      setBusy(false);
+      return;
+    }
+    onChanged();
+    showToast("合っていたことを記録しました");
+    onClose();
+  };
 
   const save = async () => {
     if (!canSave || diff === null) return;
@@ -58,8 +85,10 @@ export function AdjustSheet({ account, mode, today, showToast, onChanged, onClos
       const record = makeAdjustment(account.id, date, diff, memo, newBase(), editing ?? undefined);
       const saved = await saveRecord("transactions", record);
       noteTransactionChanged(saved);
+      // 合わせた日も「確かめた日」になる（新規のときだけ。編集は差額を直すだけ）
+      const checked = await recordCheck();
       onChanged();
-      showToast(editing ? "保存しました" : "残高を合わせました");
+      showToast(editing ? "保存しました" : checked ? "残高を合わせました" : "残高を合わせました（確かめた日は保存できませんでした）");
       onClose();
     } catch (e) {
       setFailure(e instanceof Error ? e.message : "保存できませんでした");
@@ -166,9 +195,15 @@ export function AdjustSheet({ account, mode, today, showToast, onChanged, onClos
             やめる
           </button>
         )}
-        <button type="button" className="primary-btn" disabled={!canSave} onClick={() => void save()}>
-          保存
-        </button>
+        {matched ? (
+          <button type="button" className="primary-btn" onClick={() => void saveMatched()}>
+            合っていたことを記録
+          </button>
+        ) : (
+          <button type="button" className="primary-btn" disabled={!canSave} onClick={() => void save()}>
+            保存
+          </button>
+        )}
       </div>
     </BottomSheet>
   );

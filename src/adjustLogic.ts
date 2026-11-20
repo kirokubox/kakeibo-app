@@ -6,6 +6,27 @@ import type { Account, Base, Id, Transaction } from "./types.js";
 
 export const ADJUST_CONTENT = "残高修正";
 
+/**
+ * 確かめた記録を付けた資産（v0.15.0）。すでにもっと新しい日を確かめていれば、そちらを残す。
+ * balance は「その日の終わりの、アプリの残高」（実際の残高と合っていたもの）。
+ */
+export function withBalanceCheck(account: Account, date: string, balance: number): Account {
+  const prev = account.lastCheck ?? null;
+  if (prev && prev.date > date) return account;
+  return { ...account, lastCheck: { date, balance } };
+}
+
+/**
+ * 確かめた日のあとのずれ（v0.15.0）：確かめた日の終わりの今のアプリの残高 − 確かめたときの残高。
+ * 0 ならその日までの明細は変わっていない。0 以外なら、確かめた日以前の明細が足された・直された・消された。
+ * 確かめていなければ null。
+ */
+export function checkDrift(account: Account, transactions: readonly Transaction[]): number | null {
+  const check = account.lastCheck ?? null;
+  if (!check) return null;
+  return balanceAsOf(account, transactions, check.date) - check.balance;
+}
+
 function bySequence(a: Transaction, b: Transaction): number {
   return a.date < b.date ? -1 : a.date > b.date ? 1 : a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1;
 }

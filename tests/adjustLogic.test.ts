@@ -7,11 +7,13 @@ import {
   adjustmentDiff,
   balanceAsOf,
   checkAdjustDiff,
+  checkDrift,
   describeDiff,
   initialMonthCount,
   makeAdjustment,
   monthBlocks,
   runningBalances,
+  withBalanceCheck,
 } from "../src/adjustLogic.js";
 import { account, T0, T1, tx } from "./fixtures.js";
 
@@ -141,4 +143,23 @@ test("資産の明細：月ごとに新しい順。最初は今月と先月（�
   assert.equal(initialMonthCount(blocks, "2026-12"), 1); // 今月・先月に明細が無くても、最低1つ
   assert.equal(initialMonthCount(blocks, "2027-01"), 1);
   assert.equal(initialMonthCount([], "2026-10"), 0);
+});
+
+test("確かめた日（v0.15.0）：新しい日なら置き換え、古い日なら今の記録を残す", () => {
+  const a = withBalanceCheck(bank, "2026-11-10", 12000);
+  assert.deepEqual(a.lastCheck, { date: "2026-11-10", balance: 12000 });
+  assert.deepEqual(withBalanceCheck(a, "2026-11-20", 9000).lastCheck, { date: "2026-11-20", balance: 9000 });
+  assert.deepEqual(withBalanceCheck(a, "2026-11-01", 5000).lastCheck, { date: "2026-11-10", balance: 12000 });
+  assert.deepEqual(withBalanceCheck(a, "2026-11-10", 12500).lastCheck, { date: "2026-11-10", balance: 12500 });
+});
+
+test("確かめた日（v0.15.0）：その日以前の明細が変わったときだけずれを返す", () => {
+  const txs = [tx("i1", { type: "income", accountId: "bank", amount: 2000, date: "2026-11-05" })];
+  assert.equal(checkDrift(bank, txs), null, "確かめていなければ null");
+  const checked = withBalanceCheck(bank, "2026-11-10", balanceAsOf(bank, txs, "2026-11-10"));
+  assert.equal(checkDrift(checked, txs), 0);
+  const later = [...txs, tx("e1", { type: "expense", accountId: "bank", amount: 500, date: "2026-11-15" })];
+  assert.equal(checkDrift(checked, later), 0, "確かめた日より後の明細は数えない");
+  const past = [...txs, tx("e2", { type: "expense", accountId: "bank", amount: 300, date: "2026-11-08" })];
+  assert.equal(checkDrift(checked, past), -300, "確かめた日以前に足された支出");
 });

@@ -69,6 +69,16 @@ test("資産の残高修正表示設定は旧バックアップでは省略可�
   assert.match(reason(b), /accounts\[0\]\.showAdjustmentsInEntries/);
 });
 
+test("資産の確かめた日（v0.15.0）は省略可・null可、形が違えば読み込まない", () => {
+  const b: Any = viaJson(sampleBackup());
+  b.accounts[0].lastCheck = { date: "2026-11-20", balance: 12000 };
+  assert.equal(validateBackup(b).ok, true);
+  b.accounts[0].lastCheck = null;
+  assert.equal(validateBackup(b).ok, true);
+  b.accounts[0].lastCheck = { date: "2026/11/20", balance: 12000 };
+  assert.match(reason(b), /accounts\[0\]\.lastCheck/);
+});
+
 test("書き出し→読み込みで中身が変わらない（論理削除したものも含む）", () => {
   const b = sampleBackup();
   const text = JSON.stringify(b);

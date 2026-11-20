@@ -45,6 +45,8 @@ function isRecord(v: unknown): v is Rec {
 const isStr = (v: unknown): v is string => typeof v === "string";
 const isNonEmptyStr = (v: unknown): v is string => typeof v === "string" && v !== "";
 const isBool = (v: unknown): v is boolean => typeof v === "boolean";
+const isBalanceCheck = (v: unknown): boolean =>
+  v === null || (typeof v === "object" && !Array.isArray(v) && isLocalDate((v as Rec).date) && isYen((v as Rec).balance));
 
 function oneOf(v: unknown, options: readonly string[]): boolean {
   return typeof v === "string" && options.includes(v);
@@ -161,6 +163,7 @@ const checkAccount: Check = (v, at) => {
     reqInt(v, "order", at),
     reqBool(v, "includeInUsable", at),
     opt(v, "showAdjustmentsInEntries", at, isBool, "true/false"),
+    opt(v, "lastCheck", at, isBalanceCheck, "null または { date: YYYY-MM-DD, balance: 整数 }"),
     reqBool(v, "hidden", at),
     reqYen(v, "openingBalance", at),
     cardProblem,

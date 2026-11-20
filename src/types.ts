@@ -31,12 +31,19 @@ export interface Base {
 export type HolidayShift = "before" | "after" | "none";
 
 export type AccountGroup = "cash" | "emoney" | "bank" | "card" | "investment" | "other";
+/** 残高を確かめた記録（v0.15.0）：この日の終わりの残高が、実際の残高と合っていた */
+export interface BalanceCheck {
+  date: string; // YYYY-MM-DD
+  balance: number; // その日の終わりの、アプリの残高（カードはマイナスの未払い）
+}
+
 export interface Account extends Base {
   name: string;
   group: AccountGroup;
   order: number;
   includeInUsable: boolean; // 使える資産に含める（投資・定期などは false）
   showAdjustmentsInEntries?: boolean; // 全体の明細に残高修正を表示。未設定の既存資産は表示
+  lastCheck?: BalanceCheck | null; // 最後に実際の残高と合っていると確かめた日と、その日の終わりの残高（v0.15.0）。未設定は「まだ確かめていない」
   hidden: boolean; // 非表示（アーカイブ）
   openingBalance: number; // 初期残高（1円単位の整数）
   card?: {

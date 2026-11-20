@@ -742,7 +742,24 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
       onChanged();
       if (!andContinue) {
         if (offer) showToast(`${offer.text}${repeatToast}`, 8000, offer.action);
-        else showToast(repeatToast && !saved ? repeatToast : `保存しました${repeatToast}`);
+        else if (existing && saved && !repeat) {
+          // 既存の明細・振替を直したとき（v0.15.0）：5秒のあいだ「元に戻す」で直す前の内容に戻せる（削除の元に戻すと同じ形）。
+          // 戻した内容も新しい変更として書く（updatedAt は保存のたびに今になる）
+          const before = existing;
+          showToast("保存しました", 5000, {
+            label: "元に戻す",
+            onClick: () => {
+              saveRecord("transactions", before)
+                .then(async (restored) => {
+                  noteTransactionChanged(restored);
+                  await saveRecords("reserveMoves", planSpendSync(restored, await getAll("reserveMoves"), nowIso(), () => newBase()));
+                  onChanged();
+                  showToast("直す前に戻しました");
+                })
+                .catch((e) => showToast(e instanceof Error ? e.message : "元に戻せませんでした"));
+            },
+          });
+        } else showToast(repeatToast && !saved ? repeatToast : `保存しました${repeatToast}`);
         onClose();
         return;
       }

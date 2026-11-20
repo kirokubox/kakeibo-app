@@ -147,6 +147,7 @@ button { cursor: pointer; }
 }
 .notice.ok { background: var(--kb-accent-soft); color: var(--kb-accent-strong); }
 .notice.danger { background: var(--kb-danger-soft); color: var(--kb-danger); }
+.notice.warning { background: var(--kb-warning-soft); color: var(--kb-warning); }
 
 /* 追加インポートの確認 */
 .preview { border-top: 1px solid var(--kb-line); margin-top: var(--kb-space-4); }
