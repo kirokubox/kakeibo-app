@@ -28,6 +28,7 @@ import {
   weekStartOf,
   weekTitle,
   weekdayShort,
+  visibleEntriesTransactions,
 } from "./periodLogic";
 import { getAll, getTransactionsInRange } from "./storage";
 import type { Account, Category, Transaction, WeekStart } from "./types";
@@ -121,10 +122,11 @@ export function EntriesView({ tabBar, today, weekStart: weekSetting, version, on
   const period = mode === "week" ? weekRangeNow : monthRangeNow;
   // 返金に充てた額（期間の外の立替・返金も見るので、立替・返金の集まりから計算する）
   const applied = useMemo(() => computeAllocation(reimburse).applied, [reimburse]);
+  const visibleTxs = useMemo(() => visibleEntriesTransactions(txs, accounts), [txs, accounts]);
   const totals = useMemo(() => summarize(txs, period, applied), [txs, period, applied]);
-  const cells = useMemo(() => (mode === "day" ? calendarCells(month, txs, applied, weekSetting) : []), [mode, month, txs, applied, weekSetting]);
-  const dayGroup = useMemo(() => (mode === "day" ? groupByDay(txs, { start: selectedDay, end: selectedDay }, applied)[0] : undefined), [mode, txs, selectedDay, applied]);
-  const groups = useMemo(() => (mode === "day" ? [] : groupByDay(txs, period, applied)), [mode, txs, period, applied]);
+  const cells = useMemo(() => (mode === "day" ? calendarCells(month, visibleTxs, applied, weekSetting) : []), [mode, month, visibleTxs, applied, weekSetting]);
+  const dayGroup = useMemo(() => (mode === "day" ? groupByDay(visibleTxs, { start: selectedDay, end: selectedDay }, applied)[0] : undefined), [mode, visibleTxs, selectedDay, applied]);
+  const groups = useMemo(() => (mode === "day" ? [] : groupByDay(visibleTxs, period, applied)), [mode, visibleTxs, period, applied]);
   const bars = useMemo(() => (mode === "week" ? weekExpenseBars(txs, weekFirst, applied) : []), [mode, txs, weekFirst, applied]);
   const barMax = Math.max(1, ...bars.map((b) => b.expense));
 

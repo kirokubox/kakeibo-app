@@ -12,8 +12,21 @@ import {
   weekRange,
   weekStartOf,
   weekTitle,
+  visibleEntriesTransactions,
 } from "../src/periodLogic.js";
-import { T0, T1, T2, tx } from "./fixtures.js";
+import { T0, T1, T2, account, tx } from "./fixtures.js";
+
+test("資産ごとの残高修正表示は全体の明細だけを絞り、収支の合計は変えない", () => {
+  const adjustments = [
+    tx("hide", { type: "adjustment", accountId: "a1", amount: -200 }),
+    tx("show", { type: "adjustment", accountId: "a2", amount: 300 }),
+    tx("expense", { type: "expense", accountId: "a1", amount: 1000 }),
+  ];
+  const accounts = [account("a1", { showAdjustmentsInEntries: false }), account("a2")];
+  assert.deepEqual(visibleEntriesTransactions(adjustments, accounts).map((t) => t.id), ["show", "expense"]);
+  assert.deepEqual(visibleEntriesTransactions(adjustments, [account("a1"), account("a2")]).map((t) => t.id), ["hide", "show", "expense"]);
+  assert.deepEqual(summarize(visibleEntriesTransactions(adjustments, accounts)), summarize(adjustments));
+});
 
 test("日付の足し引きと曜日（月またぎ・年またぎ・うるう日）", () => {
   assert.equal(addDays("2026-10-31", 1), "2026-11-01");

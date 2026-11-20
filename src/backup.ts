@@ -160,6 +160,7 @@ const checkAccount: Check = (v, at) => {
     reqEnum(v, "group", ACCOUNT_GROUPS, at),
     reqInt(v, "order", at),
     reqBool(v, "includeInUsable", at),
+    opt(v, "showAdjustmentsInEntries", at, isBool, "true/false"),
     reqBool(v, "hidden", at),
     reqYen(v, "openingBalance", at),
     cardProblem,

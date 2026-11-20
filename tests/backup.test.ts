@@ -60,6 +60,15 @@ test("正しいバックアップは検証を通る（全ストアに1件以上�
   assert.equal(r.ok, true);
 });
 
+test("資産の残高修正表示設定は旧バックアップでは省略可、新バックアップでは真偽値だけ受け取る", () => {
+  const b: Any = viaJson(sampleBackup());
+  assert.equal(validateBackup(b).ok, true);
+  b.accounts[0].showAdjustmentsInEntries = false;
+  assert.equal(validateBackup(b).ok, true);
+  b.accounts[0].showAdjustmentsInEntries = "false";
+  assert.match(reason(b), /accounts\[0\]\.showAdjustmentsInEntries/);
+});
+
 test("書き出し→読み込みで中身が変わらない（論理削除したものも含む）", () => {
   const b = sampleBackup();
   const text = JSON.stringify(b);

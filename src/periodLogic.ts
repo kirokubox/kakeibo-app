@@ -1,7 +1,13 @@
 // 期間（暦月・週。週の始まりは設定で月曜か日曜）と、明細の集計（画面から切り離した純粋なロジック）
 import { addDays, weekdayOf } from "./dateUtils.js";
 import { reimbAmountOf } from "./reimburseLogic.js";
-import type { Id, Transaction, WeekStart } from "./types.js";
+import type { Account, Id, Transaction, WeekStart } from "./types.js";
+
+/** 全体の明細に出す取引。残高修正の表示だけを資産ごとの設定で切り替える。 */
+export function visibleEntriesTransactions(transactions: readonly Transaction[], accounts: readonly Account[]): Transaction[] {
+  const hiddenAdjustmentAccounts = new Set(accounts.filter((a) => a.showAdjustmentsInEntries === false).map((a) => a.id));
+  return transactions.filter((t) => t.type !== "adjustment" || !hiddenAdjustmentAccounts.has(t.accountId));
+}
 
 /** 返金（収入）のid → 立替に充てた額。期間の合計から除く（reimburseLogic の computeAllocation の applied） */
 export type AppliedReturns = ReadonlyMap<Id, number>;

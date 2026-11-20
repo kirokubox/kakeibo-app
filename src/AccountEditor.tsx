@@ -38,6 +38,7 @@ export function AccountEditor({ account, accounts, balance, onBack, onDone }: Pr
   const [name, setName] = useState(account?.name ?? "");
   const [group, setGroup] = useState<AccountGroup>(account?.group ?? "cash");
   const [include, setInclude] = useState(account?.includeInUsable ?? true);
+  const [showAdjustments, setShowAdjustments] = useState(account?.showAdjustmentsInEntries ?? true);
   const [includeTouched, setIncludeTouched] = useState(!isNew);
   const [opening, setOpening] = useState<number | null>(
     account ? (account.group === "card" ? Math.abs(account.openingBalance) : account.openingBalance) : 0,
@@ -80,6 +81,7 @@ export function AccountEditor({ account, accounts, balance, onBack, onDone }: Pr
       name: name.trim(),
       group,
       includeInUsable: include,
+      showAdjustmentsInEntries: showAdjustments,
       hidden: hiddenValue,
       openingBalance: isCard ? cardOpeningToStored(opening ?? 0) : (opening ?? 0),
       order: !account || account.group !== group ? nextAccountOrder(accounts, group) : account.order,
@@ -189,6 +191,14 @@ export function AccountEditor({ account, accounts, balance, onBack, onDone }: Pr
                 setIncludeTouched(true);
               }}
             />
+          </label>
+
+          <label className="toggle-row">
+            <span>
+              残高修正を全体の明細に表示
+              <span className="field-hint block">非表示でも資産の明細と残高には残ります</span>
+            </span>
+            <input type="checkbox" checked={showAdjustments} onChange={(e) => setShowAdjustments(e.target.checked)} />
           </label>
 
           <div className="field">
