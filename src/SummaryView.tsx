@@ -549,14 +549,14 @@ function CategoryList({ rows, onPick, comparisons, periodKind }: { rows: readonl
     <ul className="list cat-list">
       {rows.map((r) => (
         <li key={r.id ?? r.name}>
-          <button type="button" className="list-row" onClick={() => onPick(r)}>
+          <button type="button" className={`list-row${comparisons ? " has-comparison" : ""}`} onClick={() => onPick(r)}>
             <span className="legend-dot" style={{ background: r.color }} />
             <span className="list-main">
               <span className="list-name">{r.name}</span>
             </span>
             <span className="cat-ratio">{percent(r.ratio)}</span>
             <span className="list-amount">{formatYen(r.amount)}</span>
-            {comparisons && <span className="list-sub">前{periodKind === "month" ? "月" : "年"}差 {formatYen(categoryDifference(r.amount, categoryAmount(comparisons.previous.rows, r.id)))}{comparisons.lastYear && `・前年同月差 ${formatYen(categoryDifference(r.amount, categoryAmount(comparisons.lastYear.rows, r.id)))}`}</span>}
+            {comparisons && <span className="list-sub cat-comparison">前{periodKind === "month" ? "月" : "年"}差 {formatYen(categoryDifference(r.amount, categoryAmount(comparisons.previous.rows, r.id)))}{comparisons.lastYear && `・前年同月差 ${formatYen(categoryDifference(r.amount, categoryAmount(comparisons.lastYear.rows, r.id)))}`}</span>}
             <Icon name="chevron-right" size={16} />
           </button>
         </li>

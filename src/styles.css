@@ -712,6 +712,13 @@ button.home-card:active { background: var(--kb-surface-2); }
 .cat-list { margin: 0 calc(-1 * var(--kb-space-4)); }
 .cat-list .list-row { gap: var(--kb-space-2); }
 .cat-list .legend-dot { margin-right: 0; }
+.cat-list .has-comparison { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto 16px; }
+.cat-list .has-comparison > .legend-dot { grid-column: 1; grid-row: 1; }
+.cat-list .has-comparison > .list-main { grid-column: 2; grid-row: 1; }
+.cat-list .has-comparison > .cat-ratio { grid-column: 3; grid-row: 1; }
+.cat-list .has-comparison > .list-amount { grid-column: 4; grid-row: 1; }
+.cat-list .has-comparison > svg { grid-column: 5; grid-row: 1; }
+.cat-list .cat-comparison { grid-column: 2 / -1; grid-row: 2; line-height: 1.4; }
 .cat-ratio { color: var(--kb-text-2); font-size: var(--kb-fs-s); font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
 .tag-bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--kb-space-3); }
 .tag-bar-button { display: grid; gap: var(--kb-space-1); width: 100%; color: inherit; text-align: left; }
