@@ -44,13 +44,27 @@ test("分類の前月・前年同月差は金額差、貯蓄率は収入ゼロ�
   assert.equal(savingsRate(0, 7000), null);
 });
 
+test("分類別の前月・前年同月差を、それぞれの暦月の明細から計算する", () => {
+  const rows = [
+    tx("current", { type: "expense", date: "2026-10-10", amount: 2500, categoryId: "c1" }),
+    tx("previous", { type: "expense", date: "2026-09-10", amount: 3000, categoryId: "c1" }),
+    tx("last-year", { type: "expense", date: "2025-10-10", amount: 1000, categoryId: "c1" }),
+  ];
+  const amount = (date: string) => categoryBreakdown(rows, cats, "expense", summaryRange(periodAround("month", date))).rows[0]?.amount ?? 0;
+  assert.equal(categoryDifference(amount("2026-10-01"), amount("2026-09-01")), -500);
+  assert.equal(categoryDifference(amount("2026-10-01"), amount("2025-10-01")), 1500);
+});
+
 test("給料日区切りの使える額は休日調整を含み、今の区切りだけ今日時点", () => {
   const data = emptyData();
+  data.accounts = [account("a1", { openingBalance: 1000 })];
+  data.transactions = [tx("before", { type: "expense", date: "2026-10-22", amount: 100 }), tx("today", { type: "income", date: "2026-10-23", amount: 500 })];
   const bars = paydayUsableTrend(data, { payday: 25, paydayHolidayShift: "before", defenseFund: 0, budgetMonthBoundary: "payday" }, "2026-10-26", 2);
   assert.deepEqual(bars.map(({ start, end, date, current }) => ({ start, end, date, current })), [
     { start: "2026-09-25", end: "2026-10-22", date: "2026-10-22", current: false },
     { start: "2026-10-23", end: "2026-11-24", date: "2026-10-26", current: true },
   ]);
+  assert.deepEqual(bars.map((bar) => bar.usable), [900, 1400]);
 });
 
 test("期間：週は月曜〜日曜、月・年は暦月・暦年、任意は向きを直す", () => {
