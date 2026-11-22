@@ -35,7 +35,7 @@ export function WelcomeCard({ onGoAssets, onGoCategories, onAdd, onOpenSettings 
       <p className="field-hint welcome-note">
         ほかの家計簿のデータやバックアップがあれば、設定の「バックアップから追加」から読み込めます。
         <button type="button" className="text-btn" onClick={onOpenSettings}>
-          設定を開く
+          「かんたん表示」を設定
         </button>
       </p>
     </section>

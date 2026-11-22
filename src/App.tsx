@@ -141,6 +141,7 @@ export default function App() {
   const updateSettings = async (next: Settings) => {
     await saveSettings(next);
     setSettings(next);
+    if (next.simpleMode) setTab((current) => current === "outlook" ? "home" : current);
   };
 
   const entryOverlay = entry && (
@@ -148,6 +149,7 @@ export default function App() {
       <EntryView
         key={entryKey(entry)}
         mode={entry}
+        simpleMode={settings.simpleMode === true}
         today={today}
         showToast={showToast}
         onChanged={bump}
@@ -201,7 +203,7 @@ export default function App() {
       );
     }
 
-    const tabBar = <TabBar current={tab} onSelect={setTab} />;
+    const tabBar = <TabBar current={tab} onSelect={setTab} simpleMode={settings.simpleMode === true} />;
 
     if (tab === "assets") {
       return (
@@ -265,7 +267,7 @@ export default function App() {
 
     return (
       <div className="app">
-        <SummaryView tabBar={tabBar} today={today} weekStart={settings.weekStart} version={dataVersion} onOpenSettings={() => setShowSettings(true)} onEdit={openEdit} onChanged={bump} />
+        <SummaryView tabBar={tabBar} today={today} weekStart={settings.weekStart} settings={settings} version={dataVersion} onOpenSettings={() => setShowSettings(true)} onEdit={openEdit} onChanged={bump} />
         {overlays}
       </div>
     );

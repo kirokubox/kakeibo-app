@@ -401,6 +401,7 @@ function checkSettings(s: unknown): string | null {
     s.monthlyBudget === undefined || s.monthlyBudget === null || (isYen(s.monthlyBudget) && (s.monthlyBudget as number) > 0) ? null : `${at}.monthlyBudget が null または1円以上の整数ではありません`,
     reqEnum(s, "homeMainFigure", ["remaining", "spent"], at),
     reqEnum(s, "weekStart", ["monday", "sunday"], at),
+    s.simpleMode === undefined || typeof s.simpleMode === "boolean" ? null : `${at}.simpleMode が true/false ではありません`,
     Number.isSafeInteger(s.backupReminderDays) && (s.backupReminderDays as number) >= 0 ? null : `${at}.backupReminderDays が 0 以上の整数ではありません`,
     s.lastBackupAt === null || isIsoDateTime(s.lastBackupAt) ? null : `${at}.lastBackupAt が null または時刻つきの日時ではありません`,
   );

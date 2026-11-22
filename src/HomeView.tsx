@@ -140,7 +140,7 @@ export function HomeView({ tabBar, today, version, settings, onOpenSettings, onA
         {summary && (
           <>
             {summary.firstUse && <WelcomeCard onGoAssets={onGoAssets} onGoCategories={onGoCategories} onAdd={() => onAdd(today)} onOpenSettings={onOpenSettings} />}
-            <WeekCard
+            {!settings.simpleMode && <WeekCard
               week={summary.week}
               bars={summary.week.bars}
               topCategories={summary.week.topCategories}
@@ -150,17 +150,17 @@ export function HomeView({ tabBar, today, version, settings, onOpenSettings, onA
               onRecalc={recalc("week")}
               manual={summary.manual}
               limitText={summary.limit ? `使い切れる上限：週 ${formatYen(summary.limit.week)}` : null}
-            />
+            />}
             <UsableCard summary={summary} />
-            <MonthCard
+            {!settings.simpleMode && <MonthCard
               month={summary.month}
               hasData={summary.hasTransactions}
               onRecalc={recalc("month")}
               onOpenPayroll={onOpenPayroll}
               manual={summary.manual}
               limitText={summary.limit && summary.limit.month !== null ? `使い切れる上限：月 ${formatYen(summary.limit.month)}` : null}
-            />
-            {debits.length > 0 && (
+            />}
+            {!settings.simpleMode && debits.length > 0 && (
               <section className="card list-card debit-list" aria-label="引き落とし予定">
                 <h2 className="list-head">
                   <span>引き落とし予定</span>
@@ -185,14 +185,14 @@ export function HomeView({ tabBar, today, version, settings, onOpenSettings, onA
               </section>
             )}
 
-            <button type="button" className="link-row" onClick={() => setPage("reserves")}>
+            {!settings.simpleMode && <button type="button" className="link-row" onClick={() => setPage("reserves")}>
               <span>取り置き</span>
               <span className="link-row-value">
                 {formatYen(summary.reserveTotal)}
                 <Icon name="chevron-right" size={18} />
               </span>
-            </button>
-            {outstanding.count > 0 && (
+            </button>}
+            {!settings.simpleMode && outstanding.count > 0 && (
               <button type="button" className="link-row" onClick={() => setPage("outstanding")}>
                 <span>未回収の立替</span>
                 <span className="link-row-value">
@@ -202,7 +202,7 @@ export function HomeView({ tabBar, today, version, settings, onOpenSettings, onA
               </button>
             )}
 
-            {notices.length > 0 && (
+            {!settings.simpleMode && notices.length > 0 && (
               <section className="notice-list" aria-label="お知らせ">
                 {notices.map((n) => (
                   <div key={n.key} className="payroll-note">

@@ -397,9 +397,11 @@ export function SettingsView({ settings, initialCategoryPage = null, persistence
         <section className="card">
           <h2>表示</h2>
           <div className="setting-list">
+            <SettingRow label="かんたん表示" value={settings.simpleMode ? "オン" : "オフ"} onClick={() => void change({ simpleMode: !settings.simpleMode })} />
             <SettingRow label="ホームの一番大きい数字" value={settings.homeMainFigure === "remaining" ? "今週あと◯円" : "今週使った額"} onClick={() => setSheet("figure")} />
             <SettingRow label="週の始まり" value={settings.weekStart === "sunday" ? "日曜" : "月曜"} onClick={() => setSheet("weekStart")} />
           </div>
+          <p className="muted small">かんたん表示でも、使える額の計算には取り置き・予定出費をこれまでどおり含めます。</p>
         </section>
 
         <section className="card">

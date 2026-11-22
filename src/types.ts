@@ -225,6 +225,8 @@ export interface Settings {
   weekStart: WeekStart; // 初期値 'monday'。週の予算・ホームの週・明細の週別・カレンダー・集計の週に効く
   backupReminderDays: number; // 最後のバックアップから何日で知らせるか
   lastBackupAt: string | null;
+  /** 画面を簡単にする。未設定はオフ */
+  simpleMode?: boolean;
 }
 
 /** データストア名ごとのレコード型 */

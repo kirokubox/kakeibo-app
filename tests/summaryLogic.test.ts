@@ -4,6 +4,7 @@ import {
   adjustmentStats,
   assetTrend,
   categoryBreakdown,
+  categoryDifference,
   categoryColors,
   categoryTransactions,
   categoryTrend,
@@ -11,8 +12,10 @@ import {
   lastMonths,
   monthBudgetBars,
   periodAround,
+  paydayUsableTrend,
   pieSlices,
   shiftSummaryPeriod,
+  savingsRate,
   summaryRange,
   switchDay,
   tagBreakdown,
@@ -21,7 +24,7 @@ import {
   weekBudgetBars,
 } from "../src/summaryLogic.js";
 import type { BudgetSnapshot, Category, Transaction } from "../src/types.js";
-import { T0, account, category, tx } from "./fixtures.js";
+import { T0, account, category, emptyData, tx } from "./fixtures.js";
 
 const cats: Category[] = [
   category("p1", { name: "食費", order: 0 }),
@@ -33,6 +36,22 @@ const cats: Category[] = [
   category("i2", { kind: "income", parentId: "i1", name: "給与" }),
 ];
 const OCT = { start: "2026-10-01", end: "2026-10-31" };
+
+test("分類の前月・前年同月差は金額差、貯蓄率は収入ゼロなら空欄", () => {
+  assert.equal(categoryDifference(2500, 3000), -500);
+  assert.equal(categoryDifference(2500, 0), 2500);
+  assert.equal(savingsRate(10000, 7000), 0.3);
+  assert.equal(savingsRate(0, 7000), null);
+});
+
+test("給料日区切りの使える額は休日調整を含み、今の区切りだけ今日時点", () => {
+  const data = emptyData();
+  const bars = paydayUsableTrend(data, { payday: 25, paydayHolidayShift: "before", defenseFund: 0, budgetMonthBoundary: "payday" }, "2026-10-26", 2);
+  assert.deepEqual(bars.map(({ start, end, date, current }) => ({ start, end, date, current })), [
+    { start: "2026-09-25", end: "2026-10-22", date: "2026-10-22", current: false },
+    { start: "2026-10-23", end: "2026-11-24", date: "2026-10-26", current: true },
+  ]);
+});
 
 test("期間：週は月曜〜日曜、月・年は暦月・暦年、任意は向きを直す", () => {
   assert.deepEqual(summaryRange(periodAround("week", "2026-10-28")), { start: "2026-10-26", end: "2026-11-01" });

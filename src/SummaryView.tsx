@@ -18,6 +18,7 @@ import {
   adjustmentStats,
   assetTrend,
   categoryBreakdown,
+  categoryDifference,
   categoryTransactions,
   categoryTrend,
   childPalette,
@@ -25,8 +26,10 @@ import {
   lastMonths,
   monthBudgetBars,
   periodAround,
+  paydayUsableTrend,
   pieSlices,
   shiftSummaryPeriod,
+  savingsRate,
   summaryRange,
   switchDay,
   tagBreakdown,
@@ -34,16 +37,17 @@ import {
   tagTrend,
   weekBudgetBars,
 } from "./summaryLogic";
-import type { CategoryRow, SummaryPeriod, SummaryPeriodKind, TagKey } from "./summaryLogic";
+import type { CategoryBreakdown, CategoryRow, SummaryPeriod, SummaryPeriodKind, TagKey } from "./summaryLogic";
 import { useToast } from "./Toast";
 import { TxRow } from "./TxRow";
-import type { CategoryKind, Id, Tag, Transaction, WeekStart } from "./types";
+import type { CategoryKind, Id, Settings, Tag, Transaction, WeekStart } from "./types";
 
 interface Props {
   tabBar: ReactNode;
   today: string;
   /** 週の始まり（設定）。集計の「週」に使う */
   weekStart: WeekStart;
+  settings: Settings;
   /** 保存・削除などで増える。変わったら読み直す */
   version: number;
   onOpenSettings: () => void;
@@ -71,12 +75,13 @@ interface DrillStep {
 }
 
 /** 集計タブ：開閉なしで縦に並べる（キロクカレンダーと同じ考え方） */
-export function SummaryView({ tabBar, today, weekStart, version, onOpenSettings, onEdit, onChanged }: Props) {
+export function SummaryView({ tabBar, today, weekStart, settings, version, onOpenSettings, onEdit, onChanged }: Props) {
   const { data, error } = useAllData(version);
   const [period, setPeriod] = useState<SummaryPeriod>(() => periodAround("month", today, undefined, weekStart));
   const [kind, setKind] = useState<CategoryKind>("expense");
   const [path, setPath] = useState<DrillStep[]>([]);
   const [selectedTag, setSelectedTag] = useState<Tag | null>(null);
+  const [focusTags, setFocusTags] = useState(false);
   const [assetSel, setAssetSel] = useState<Id[]>([]);
   const [adjusting, setAdjusting] = useState<Transaction | null>(null);
   const [toast, showToast] = useToast();
@@ -91,11 +96,18 @@ export function SummaryView({ tabBar, today, weekStart, version, onOpenSettings,
 
   const totals = useMemo(() => (txs ? summarize(txs, range, applied) : null), [txs, range.start, range.end, applied]); // eslint-disable-line react-hooks/exhaustive-deps
   const breakdown = useMemo(() => (txs && categories ? categoryBreakdown(txs, categories, kind, range, applied) : null), [txs, categories, kind, range.start, range.end, applied]); // eslint-disable-line react-hooks/exhaustive-deps
+  const comparisons = useMemo(() => {
+    if (!txs || !categories || (period.kind !== "month" && period.kind !== "year")) return null;
+    const previous = categoryBreakdown(txs, categories, kind, summaryRange(shiftSummaryPeriod(period, -1), weekStart), applied);
+    const lastYear = period.kind === "month" ? categoryBreakdown(txs, categories, kind, summaryRange(shiftSummaryPeriod(period, -12), weekStart), applied) : null;
+    return { previous, lastYear };
+  }, [txs, categories, kind, period, weekStart, applied]);
   const tags = useMemo(() => (txs ? tagBreakdown(txs, range) : null), [txs, range.start, range.end]); // eslint-disable-line react-hooks/exhaustive-deps
   const tagMonths = useMemo(() => (txs ? tagTrend(txs, endMonth) : []), [txs, endMonth]);
   const weekBars = useMemo(() => (txs && data ? weekBudgetBars(data.budgetSnapshots, txs, today, spend, 12, weekStart) : []), [txs, data, today, spend, weekStart]);
   const monthBars = useMemo(() => (txs && data ? monthBudgetBars(data.budgetSnapshots, txs, today, spend) : []), [txs, data, today, spend]);
   const incomeExpense = useMemo(() => (txs ? incomeExpenseTrend(txs, endMonth, 12, applied) : []), [txs, endMonth, applied]);
+  const paydayBars = useMemo(() => data ? paydayUsableTrend(data, settings, today) : [], [data, settings, today]);
   const assets = useMemo(() => (txs && data ? assetTrend(data.accounts, txs, endMonth) : null), [txs, data, endMonth]);
   const adjust = useMemo(() => (txs && data ? adjustmentStats(txs, data.accounts, range) : null), [txs, data, range.start, range.end]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -249,6 +261,13 @@ export function SummaryView({ tabBar, today, weekStart, version, onOpenSettings,
               <p className={`band-value ${kind === "expense" ? "expense" : "income"}`}>{formatYen(sum)}</p>
             </div>
           </section>
+          {comparisons && (
+            <section className="card summary-section" aria-label="分類の前の期間との比較">
+              <h2>前の期間との比較</h2>
+              <p>前{period.kind === "month" ? "月" : "年"}との差：{formatYen(categoryDifference(sum, categoryAmount(comparisons.previous.rows, step.id)))}</p>
+              {comparisons.lastYear && <p>前年同月との差：{formatYen(categoryDifference(sum, categoryAmount(comparisons.lastYear.rows, step.id)))}</p>}
+            </section>
+          )}
           {kids.length > 0 && (
             <section className="card summary-section" aria-label="小分類">
               <h2>小分類</h2>
@@ -356,7 +375,7 @@ export function SummaryView({ tabBar, today, weekStart, version, onOpenSettings,
                     }}
                   />
                 </div>
-                <CategoryList rows={breakdown.rows} onPick={(r) => setPath([{ id: r.id, name: r.name }])} />
+                <CategoryList rows={breakdown.rows} onPick={(r) => setPath([{ id: r.id, name: r.name }])} comparisons={comparisons} periodKind={period.kind} />
               </>
             )}
           </section>
@@ -378,7 +397,6 @@ export function SummaryView({ tabBar, today, weekStart, version, onOpenSettings,
                     <span>
                       <span className="legend-dot" style={{ background: TAG_COLORS[r.tag] }} />
                       {TAG_KEY_LABELS[r.tag]}
-                      {r.tag === "none" && <span className="muted small">（固定費など）</span>}
                     </span>
                     <span className="tag-bar-amount">
                       {formatYen(r.amount)}（{percent(r.ratio)}）
@@ -393,8 +411,15 @@ export function SummaryView({ tabBar, today, weekStart, version, onOpenSettings,
               ))}
             </ul>
             <h3>直近12か月の推移</h3>
-            <BarChart labels={months12} series={tagSeries} stacked ariaLabel="タグ別の支出の推移（積み上げ棒）" />
-            <Legend items={tagSeries.map((s) => ({ label: s.label, color: s.color }))} />
+            <label className="field-hint"><input type="checkbox" checked={focusTags} onChange={(e) => setFocusTags(e.target.checked)} /> 満足・反省だけ表示</label>
+            <BarChart labels={months12} series={focusTags ? tagSeries.filter((s) => s.key === "satisfied" || s.key === "regret") : tagSeries} stacked ariaLabel="タグ別の支出の推移（積み上げ棒）" />
+            <Legend items={(focusTags ? tagSeries.filter((s) => s.key === "satisfied" || s.key === "regret") : tagSeries).map((s) => ({ label: s.label, color: s.color }))} />
+            <h3>タグの月ごとの割合</h3>
+            <ul className="list">{tagMonths.map((m) => {
+              const total = TAG_KEYS.reduce((sum, key) => sum + m.values[key], 0);
+              return <li className="list-row static" key={m.month}><span>{m.month}</span><span>{(focusTags ? (["satisfied", "regret"] as const) : TAG_KEYS).map((key) => `${TAG_KEY_LABELS[key]} ${percent(total ? m.values[key] / total : 0)}`).join(" / ")}</span></li>;
+            })}</ul>
+            <p className="field-hint">固定費など（タグなし）の直近12か月合計：{formatYen(tagMonths.reduce((sum, m) => sum + m.values.none, 0))}</p>
           </section>
         )}
 
@@ -433,8 +458,16 @@ export function SummaryView({ tabBar, today, weekStart, version, onOpenSettings,
               ariaLabel="月ごとの収入と支出と差額"
             />
             <Legend items={[{ label: "収入", color: INCOME }, { label: "支出", color: EXPENSE }, { label: "差額（収入−支出）", color: "#2f8f6b" }]} />
+            <h3>貯蓄率（収入−支出）÷収入</h3>
+            <ul className="list">{incomeExpense.map((m) => <li className="list-row static" key={m.month}><span>{m.month}</span><span>{savingsRate(m.income, m.expense) === null ? "—（収入なし）" : percent(savingsRate(m.income, m.expense)!)}</span></li>)}</ul>
           </section>
         )}
+
+        {data && <section className="card summary-section" aria-label="給料日区切りの使える額">
+          <h2>給料日区切りの使える額（直近12区切り）</h2>
+          <BarChart labels={paydayBars.map((b) => b.start.slice(5))} series={[{ key: "usable", label: "使える額", color: PALETTE[0], values: paydayBars.map((b) => b.usable) }]} ariaLabel="給料日区切りの使える額" />
+          <ul className="list">{paydayBars.map((b) => <li className="list-row static" key={b.start}><span>{b.start}〜{b.end}{b.current ? `（${b.date}時点）` : "（末日時点）"}</span><span>{formatYen(b.usable)}</span></li>)}</ul>
+        </section>}
 
         {assets && (
           <section className="card summary-section" aria-label="資産の残高の推移">
@@ -505,7 +538,13 @@ export function SummaryView({ tabBar, today, weekStart, version, onOpenSettings,
 }
 
 /** 分類の一覧（色の点・名前・割合・金額）。押すとその分類の画面へ */
-function CategoryList({ rows, onPick }: { rows: readonly CategoryRow[]; onPick: (r: CategoryRow) => void }) {
+function categoryAmount(rows: readonly CategoryRow[], id: Id | null): number {
+  const direct = rows.find((r) => r.id === id);
+  if (direct) return direct.amount;
+  return rows.flatMap((r) => r.children ?? []).find((r) => r.id === id)?.amount ?? 0;
+}
+
+function CategoryList({ rows, onPick, comparisons, periodKind }: { rows: readonly CategoryRow[]; onPick: (r: CategoryRow) => void; comparisons?: { previous: CategoryBreakdown; lastYear: CategoryBreakdown | null } | null; periodKind?: SummaryPeriodKind }) {
   return (
     <ul className="list cat-list">
       {rows.map((r) => (
@@ -517,6 +556,7 @@ function CategoryList({ rows, onPick }: { rows: readonly CategoryRow[]; onPick: 
             </span>
             <span className="cat-ratio">{percent(r.ratio)}</span>
             <span className="list-amount">{formatYen(r.amount)}</span>
+            {comparisons && <span className="list-sub">前{periodKind === "month" ? "月" : "年"}差 {formatYen(categoryDifference(r.amount, categoryAmount(comparisons.previous.rows, r.id)))}{comparisons.lastYear && `・前年同月差 ${formatYen(categoryDifference(r.amount, categoryAmount(comparisons.lastYear.rows, r.id)))}`}</span>}
             <Icon name="chevron-right" size={16} />
           </button>
         </li>

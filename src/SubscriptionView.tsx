@@ -90,7 +90,7 @@ export function SubscriptionView({ transactions, reviews, today, showToast, onCh
         <p className="empty-note">サブスクの分類の明細はまだありません。</p>
       ) : (
         <>
-          <p className="field-hint">毎月続いているものの合計の目安：{formatYen(monthly)}（やめると記録したものは除く）</p>
+          <p className="field-hint">毎月続いているものの合計の目安：{formatYen(monthly)}／年換算 {formatYen(monthly * 12)}（やめると記録したものは除く）</p>
           <ul className="list sub-list">
             {summaries.map((s) => {
               const d = decisions.get(s.key);

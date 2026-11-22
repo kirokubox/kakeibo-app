@@ -14,12 +14,13 @@ export const TABS: ReadonlyArray<{ id: TabId; label: string; icon: IconName }> =
 interface Props {
   current: TabId;
   onSelect: (id: TabId) => void;
+  simpleMode?: boolean;
 }
 
-export function TabBar({ current, onSelect }: Props) {
+export function TabBar({ current, onSelect, simpleMode = false }: Props) {
   return (
     <nav className="tabbar" aria-label="画面の切り替え">
-      {TABS.map((tab) => (
+      {TABS.filter((tab) => !simpleMode || tab.id !== "outlook").map((tab) => (
         <button
           key={tab.id}
           type="button"

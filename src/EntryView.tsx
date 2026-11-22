@@ -120,6 +120,7 @@ export function entryKey(mode: EntryMode): string {
 
 interface Props {
   mode: EntryMode;
+  simpleMode?: boolean;
   today: string;
   showToast: ShowToast;
   /** 保存・削除・元に戻すのあと（一覧を読み直してもらう） */
@@ -192,7 +193,7 @@ function initialState(mode: EntryMode, today: string): FormState {
 }
 
 /** 入力画面（収入・支出・振替）。新規・編集・コピー */
-export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPayroll }: Props) {
+export function EntryView({ mode, today, simpleMode = false, showToast, onChanged, onClose, onOpenPayroll }: Props) {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [index, setIndex] = useState<SuggestIndex | null>(null);
@@ -910,6 +911,9 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
         { label: "削除", onSelect: () => setSheet("deleteRec"), danger: true },
       ]
     : [
+        ...(simpleMode && !isTransfer && draft.type === "expense" ? [{ label: "立替", onSelect: () => setSheet("reimb") }] : []),
+        ...(simpleMode && reserveRow ? [{ label: "取り置きから払う", onSelect: () => setSheet("reserve") }] : []),
+        ...(simpleMode && settleRow ? [{ label: "返金した立替", onSelect: () => setSheet("settle") }] : []),
         ...(onOpenPayroll && !isEdit ? [{ label: "給料明細から入力", onSelect: () => onOpenPayroll({}) }] : []),
         { label: "よく使う入力に登録", onSelect: () => void registerFavorite() },
         ...(isEdit
@@ -1285,7 +1289,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
                 />
               </div>
 
-              {!isTransfer && draft.type === "expense" && (
+              {!simpleMode && !isTransfer && draft.type === "expense" && (
                 <button
                   type="button"
                   ref={setRowRef("reimb")}
@@ -1299,7 +1303,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
                 </button>
               )}
 
-              {reserveRow && (
+              {!simpleMode && reserveRow && (
                 <>
                   <button type="button" ref={setRowRef("reserve")} className="entry-row tap" onClick={() => setSheet("reserve")}>
                     <span className="entry-label settle-label">取り置きから払う</span>
@@ -1322,7 +1326,7 @@ export function EntryView({ mode, today, showToast, onChanged, onClose, onOpenPa
                 </>
               )}
 
-              {settleRow && (
+              {!simpleMode && settleRow && (
                 <>
                   <button type="button" ref={setRowRef("settle")} className="entry-row tap settle-row" onClick={() => setSheet("settle")}>
                     <span className="entry-label settle-label">返金した立替</span>

@@ -1,8 +1,8 @@
 // 集計タブのロジック（画面から切り離した純粋なロジック）。
 // 合計の数え方は明細タブと同じ（periodLogic）：立替・返金の除き方、振替・残高修正は収入・支出に数えない。
 import { txEffect } from "./accountLogic.js";
-import { variableSpent } from "./budgetLogic.js";
-import type { DateSpan } from "./budgetLogic.js";
+import { calcUsable, paydayPeriodOf, variableSpent } from "./budgetLogic.js";
+import type { BudgetData, BudgetSettings, DateSpan } from "./budgetLogic.js";
 import { addDays } from "./dateUtils.js";
 import { addMonths, countedExpense, countedIncome, inRange, monthKeyOf, monthRange, weekRange } from "./periodLogic.js";
 import type { AppliedReturns, DateRange } from "./periodLogic.js";
@@ -210,7 +210,38 @@ export function categoryTransactions(txs: readonly Transaction[], categories: re
 
 export type TagKey = Tag | "none";
 export const TAG_KEYS: readonly TagKey[] = ["daily", "satisfied", "regret", "none"];
-export const TAG_KEY_LABELS: Record<TagKey, string> = { daily: "日常", satisfied: "満足", regret: "反省", none: "タグなし" };
+export const TAG_KEY_LABELS: Record<TagKey, string> = { daily: "日常", satisfied: "満足", regret: "反省", none: "固定費など（タグなし）" };
+
+/** 比較先に記録がない場合も金額差を明示する。 */
+export function categoryDifference(current: number, previous: number): number {
+  return current - previous;
+}
+
+/** 収入がない月は割合を計算できない。 */
+export function savingsRate(income: number, expense: number): number | null {
+  return income === 0 ? null : (income - expense) / income;
+}
+
+export interface PaydayUsableBar {
+  start: string;
+  end: string;
+  date: string;
+  usable: number;
+  current: boolean;
+}
+
+/** 給料日の区切りごとの締め時点の使える額。進行中の区切りは今日時点。 */
+export function paydayUsableTrend(data: BudgetData, settings: BudgetSettings, today: string, count = 12): PaydayUsableBar[] {
+  const bars: PaydayUsableBar[] = [];
+  let period = paydayPeriodOf(today, settings);
+  for (let i = 0; i < count; i++) {
+    const current = i === 0;
+    const date = current ? today : period.end;
+    bars.push({ ...period, date, usable: calcUsable(data, settings, date).usable, current });
+    period = paydayPeriodOf(addDays(period.start, -1), settings);
+  }
+  return bars.reverse();
+}
 
 export interface TagRow {
   tag: TagKey;
