@@ -5,6 +5,8 @@ import {
   assetTrend,
   categoryBreakdown,
   categoryDifference,
+  comparableBreakdown,
+  hasKindRecords,
   categoryColors,
   categoryTransactions,
   categoryTrend,
@@ -299,4 +301,24 @@ test("速さ：架空の2万件で、集計が十分に速い", () => {
   monthBudgetBars([], list, "2026-10-26", new Map());
   const ms = performance.now() - t0;
   assert.ok(ms < 1000, `集計 ${ms}ms`);
+});
+
+test("比べる期間に記録が無いときは差を出さない（その分類だけ0円なら出す）", () => {
+  const SEP = { start: "2026-09-01", end: "2026-09-30" };
+  const AUG = { start: "2026-08-01", end: "2026-08-31" };
+  const txs = [
+    tx("oct", { date: "2026-10-05", amount: 3000, categoryId: "c3" }),
+    tx("sep", { date: "2026-09-05", amount: 2000, categoryId: "c1" }),
+    tx("sal", { type: "income", date: "2026-08-25", amount: 200000, categoryId: "i2" }),
+  ];
+  // 9月：支出の記録あり（趣味は0円）→ 差を出す
+  assert.equal(hasKindRecords(txs, "expense", SEP), true);
+  assert.notEqual(comparableBreakdown(txs, cats, "expense", SEP), null);
+  // 8月：収入だけで、支出の記録は無い → 支出の差は出さない
+  assert.equal(hasKindRecords(txs, "expense", AUG), false);
+  assert.equal(comparableBreakdown(txs, cats, "expense", AUG), null);
+  assert.notEqual(comparableBreakdown(txs, cats, "income", AUG), null);
+  // 消した明細は数えない
+  assert.equal(hasKindRecords([{ ...txs[1], deletedAt: T0 }], "expense", SEP), false);
+  assert.equal(hasKindRecords(txs, "expense", OCT), true);
 });

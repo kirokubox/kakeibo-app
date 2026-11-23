@@ -212,9 +212,22 @@ export type TagKey = Tag | "none";
 export const TAG_KEYS: readonly TagKey[] = ["daily", "satisfied", "regret", "none"];
 export const TAG_KEY_LABELS: Record<TagKey, string> = { daily: "日常", satisfied: "満足", regret: "反省", none: "固定費など（タグなし）" };
 
-/** 比較先に記録がない場合も金額差を明示する。 */
+/** 前の期間との差（今 − 前）。比べる期間に記録があるかは hasKindRecords で先に確かめる */
 export function categoryDifference(current: number, previous: number): number {
   return current - previous;
+}
+
+/**
+ * 比べる期間に、その種類（支出／収入）の明細が1件でもあるか。
+ * 1件も無い期間は「0円だった」のではなく「記録が無い」ので、差を出さない（2026-11-23 本人「出さない」）。
+ */
+export function hasKindRecords(txs: readonly Transaction[], kind: CategoryKind, range: DateRange): boolean {
+  return txs.some((t) => t.deletedAt === null && t.type === kind && inRange(t.date, range));
+}
+
+/** 比べる期間の分類別。記録が無ければ null（差を出さない） */
+export function comparableBreakdown(txs: readonly Transaction[], categories: readonly Category[], kind: CategoryKind, range: DateRange, applied?: AppliedReturns): CategoryBreakdown | null {
+  return hasKindRecords(txs, kind, range) ? categoryBreakdown(txs, categories, kind, range, applied) : null;
 }
 
 /** 収入がない月は割合を計算できない。 */

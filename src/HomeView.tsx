@@ -140,7 +140,8 @@ export function HomeView({ tabBar, today, version, settings, onOpenSettings, onA
         {summary && (
           <>
             {summary.firstUse && <WelcomeCard onGoAssets={onGoAssets} onGoCategories={onGoCategories} onAdd={() => onAdd(today)} onOpenSettings={onOpenSettings} />}
-            {!settings.simpleMode && <WeekCard
+            {/* かんたん表示でも「今週あと◯円」は残す（2026-11-23 本人「残す」）。決め直しの入口だけ隠す */}
+            <WeekCard
               week={summary.week}
               bars={summary.week.bars}
               topCategories={summary.week.topCategories}
@@ -150,7 +151,8 @@ export function HomeView({ tabBar, today, version, settings, onOpenSettings, onA
               onRecalc={recalc("week")}
               manual={summary.manual}
               limitText={summary.limit ? `使い切れる上限：週 ${formatYen(summary.limit.week)}` : null}
-            />}
+              simple={settings.simpleMode === true}
+            />
             <UsableCard summary={summary} />
             {!settings.simpleMode && <MonthCard
               month={summary.month}

@@ -84,13 +84,13 @@ function Remaining({ remaining, unit }: { remaining: number; unit: string }) {
 }
 
 /** 一番大きい数字のカード(今週)。設定 homeMainFigure で「あと◯円」か「使った額」を大きく出す */
-export function WeekCard({ week, bars, topCategories, figure, today, hasData, onRecalc, limitText, manual }: Common & { week: BudgetFigure; bars: BarProps["bars"]; topCategories: Array<{ id: string | null; name: string; amount: number }>; figure: HomeMainFigure; today: string; hasData: boolean }) {
+export function WeekCard({ week, bars, topCategories, figure, today, hasData, onRecalc, limitText, manual, simple = false }: Common & { week: BudgetFigure; bars: BarProps["bars"]; topCategories: Array<{ id: string | null; name: string; amount: number }>; figure: HomeMainFigure; today: string; hasData: boolean; /** かんたん表示：予算の決め直しの「…」を出さない */ simple?: boolean }) {
   const budget = week.snapshot?.amount ?? null;
   return (
     <section className="card home-card main-card" aria-label="今週">
       <div className="home-card-head">
         <span className="home-label">今週（{periodLabel(week.start, week.end)}）</span>
-        <RecalcMenu label="今週の予算" onRecalc={onRecalc} manual={manual} />
+        {!simple && <RecalcMenu label="今週の予算" onRecalc={onRecalc} manual={manual} />}
       </div>
       {week.remaining === null || budget === null ? (
         !hasData ? (

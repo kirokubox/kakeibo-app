@@ -19,6 +19,7 @@ import {
   adjustmentStats,
   assetTrend,
   categoryBreakdown,
+  comparableBreakdown,
   categoryDifference,
   categoryTransactions,
   categoryTrend,
@@ -105,9 +106,10 @@ export function SummaryView({ tabBar, today, weekStart, settings, version, onOpe
   const breakdown = useMemo(() => (txs && categories ? categoryBreakdown(txs, categories, kind, range, applied) : null), [txs, categories, kind, range.start, range.end, applied]); // eslint-disable-line react-hooks/exhaustive-deps
   const comparisons = useMemo(() => {
     if (!txs || !categories || (period.kind !== "month" && period.kind !== "year")) return null;
-    const previous = categoryBreakdown(txs, categories, kind, summaryRange(shiftSummaryPeriod(period, -1), weekStart), applied);
-    const lastYear = period.kind === "month" ? categoryBreakdown(txs, categories, kind, summaryRange(shiftSummaryPeriod(period, -12), weekStart), applied) : null;
-    return { previous, lastYear };
+    // 比べる期間に記録が無いときは null（差を出さない）
+    const previous = comparableBreakdown(txs, categories, kind, summaryRange(shiftSummaryPeriod(period, -1), weekStart), applied);
+    const lastYear = period.kind === "month" ? comparableBreakdown(txs, categories, kind, summaryRange(shiftSummaryPeriod(period, -12), weekStart), applied) : null;
+    return previous || lastYear ? { previous, lastYear } : null;
   }, [txs, categories, kind, period, weekStart, applied]);
   const tags = useMemo(() => (txs ? tagBreakdown(txs, range) : null), [txs, range.start, range.end]); // eslint-disable-line react-hooks/exhaustive-deps
   const tagMonths = useMemo(() => (txs ? tagTrend(txs, endMonth) : []), [txs, endMonth]);
@@ -277,7 +279,7 @@ export function SummaryView({ tabBar, today, weekStart, settings, version, onOpe
           {comparisons && (
             <section className="card summary-section" aria-label="分類の前の期間との比較">
               <h2>前の期間との比較</h2>
-              <p>前{period.kind === "month" ? "月" : "年"}との差：{formatYen(categoryDifference(sum, categoryAmount(comparisons.previous.rows, step.id)))}</p>
+              {comparisons.previous && <p>前{period.kind === "month" ? "月" : "年"}との差：{formatYen(categoryDifference(sum, categoryAmount(comparisons.previous.rows, step.id)))}</p>}
               {comparisons.lastYear && <p>前年同月との差：{formatYen(categoryDifference(sum, categoryAmount(comparisons.lastYear.rows, step.id)))}</p>}
             </section>
           )}
@@ -557,7 +559,11 @@ function categoryAmount(rows: readonly CategoryRow[], id: Id | null): number {
   return rows.flatMap((r) => r.children ?? []).find((r) => r.id === id)?.amount ?? 0;
 }
 
-function CategoryList({ rows, onPick, comparisons, periodKind }: { rows: readonly CategoryRow[]; onPick: (r: CategoryRow) => void; comparisons?: { previous: CategoryBreakdown; lastYear: CategoryBreakdown | null } | null; periodKind?: SummaryPeriodKind }) {
+function CategoryList({ rows, onPick, comparisons, periodKind }: { rows: readonly CategoryRow[]; onPick: (r: CategoryRow) => void; comparisons?: { previous: CategoryBreakdown | null; lastYear: CategoryBreakdown | null } | null; periodKind?: SummaryPeriodKind }) {
+  const differences = (r: CategoryRow) => [
+    comparisons?.previous ? `前${periodKind === "month" ? "月" : "年"}差 ${formatYen(categoryDifference(r.amount, categoryAmount(comparisons.previous.rows, r.id)))}` : null,
+    comparisons?.lastYear ? `前年同月差 ${formatYen(categoryDifference(r.amount, categoryAmount(comparisons.lastYear.rows, r.id)))}` : null,
+  ].filter((x): x is string => x !== null).join("・");
   return (
     <ul className="list cat-list">
       {rows.map((r) => (
@@ -569,7 +575,7 @@ function CategoryList({ rows, onPick, comparisons, periodKind }: { rows: readonl
             </span>
             <span className="cat-ratio">{percent(r.ratio)}</span>
             <span className="list-amount">{formatYen(r.amount)}</span>
-            {comparisons && <span className="list-sub cat-comparison">前{periodKind === "month" ? "月" : "年"}差 {formatYen(categoryDifference(r.amount, categoryAmount(comparisons.previous.rows, r.id)))}{comparisons.lastYear && `・前年同月差 ${formatYen(categoryDifference(r.amount, categoryAmount(comparisons.lastYear.rows, r.id)))}`}</span>}
+            {comparisons && <span className="list-sub cat-comparison">{differences(r)}</span>}
             <Icon name="chevron-right" size={16} />
           </button>
         </li>
