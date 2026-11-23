@@ -197,6 +197,20 @@ test("ホーム：自分で決めた予算で出し、使い切れる上限（�
   assert.equal(backupNotice({ lastBackupAt: null, backupReminderDays: 14 }, false, "2026-10-26"), null);
 });
 
+test("使い切れる上限（月）は今日の時点の使える額＋この区切りで使った額。途中の残高修正を入れる（v0.18.1）", () => {
+  const base = { categories: [salParent], transactions: [daily("v1", "2026-10-24", 31100), tx("sal", { type: "income", date: "2026-10-23", amount: 300000, categoryId: "seed:income:給与" })] };
+  const d = data(base);
+  const snaps = planBudgets(ctx(d, MANUAL, "2026-10-26"));
+  const home = summarizeHome(d, snaps, MANUAL, "2026-10-26");
+  const u = calcUsable(d, MANUAL, "2026-10-26");
+  assert.equal(home.limit?.month, Math.max(0, u.usable) + home.month.spent);
+  // 区切りの途中で実際の残高に合わせて減らすと、月の上限も下がる（以前は区切りの始まりの残高のままだった）
+  const first = d.transactions.find((t) => t.id === "sal")!;
+  const lowered = data({ ...base, transactions: [...base.transactions, tx("adj", { type: "adjustment", date: "2026-10-25", amount: -100000, accountId: first.accountId })] });
+  const after = summarizeHome(lowered, snaps, MANUAL, "2026-10-26");
+  assert.equal(after.limit?.month, (home.limit?.month ?? 0) - 100000);
+});
+
 // ---- 自動の月の予算を給料込みで決める ----
 
 const salaryCat = category("c_sal", { kind: "income", parentId: "seed:income:給与" });

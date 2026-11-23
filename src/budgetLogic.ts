@@ -707,19 +707,27 @@ export interface HomeSummary {
   /** 予算を自分で決めているか（月の予算を設定の金額で決める） */
   manual: boolean;
   /**
-   * 使い切れる上限（今の自動の計算）。自分で決めているときだけ。
-   * 週＝給料日までに使える額 ÷ 残り日数 × 7、月＝自動の月の予算（給料込み）。使える額がマイナスなら 0
+   * 使い切れる上限（今の自動の計算）。自分で決めているときだけ。今日の時点で出す。
+   * 週＝給料日までに使える額 ÷ 残り日数 × 7、月＝今日の使える額＋この区切りでもう使った額。使える額がマイナスなら 0
    */
   limit: { week: number; month: number | null } | null;
 }
 
-/** 使い切れる上限（今の自動の計算）：週と月 */
-function autoLimits(data: BudgetData, s: BudgetSettings, today: string, usable: UsableResult, monthSpan: DateSpan): { week: number; month: number | null } {
-  const week = usable.usable > 0 ? Math.floor((usable.usable * 7) / usable.days) : 0;
-  // 月の自動の予算は、給料が入っていれば出せる（給料日の区切りで給料がまだなら null）
+/**
+ * 使い切れる上限（今の自動の計算）：週と月。どちらも**今日の時点**の使える額から出す（v0.18.1）。
+ * 月＝今日の使える額（マイナスなら0）＋この区切りでもう使った額。区切りが暦月なら、使える額は「1日あたり × 月末までの日数」を超えない。
+ * 以前は月を区切りの始まりの時点で出していたため、途中の残高修正・取り置き・含めない資産への移動が入らず、大きく出ていた。
+ */
+function autoLimits(data: BudgetData, s: BudgetSettings, today: string, usable: UsableResult, monthSpan: DateSpan, monthSpent: number): { week: number; month: number | null } {
+  const left = Math.max(0, usable.usable);
+  const week = left > 0 ? Math.floor((left * 7) / usable.days) : 0;
   let month: number | null = null;
-  if (s.budgetMonthBoundary === "calendar") month = monthBudgetPlanCalendar(data, s, today.slice(0, 7)).amount;
-  else if (salaryEntered(data, monthSpan)) month = monthBudgetPlanPayday(data, s, monthSpan.start).amount;
+  if (s.budgetMonthBoundary === "calendar") {
+    const daysLeft = daysBetween(today, monthSpan.end) + 1;
+    month = Math.min(left, usable.perDay * daysLeft) + monthSpent;
+  } else if (salaryEntered(data, monthSpan)) {
+    month = left + monthSpent;
+  }
   return { week, month };
 }
 
@@ -767,7 +775,7 @@ export function summarizeHome(data: BudgetData, snapshots: readonly BudgetSnapsh
     reserveTotal: usable.reserveTotal,
     salaryPending,
     manual,
-    limit: manual ? autoLimits(data, s, today, usable, monthSpan) : null,
+    limit: manual ? autoLimits(data, s, today, usable, monthSpan, monthSpent) : null,
   };
 }
 
