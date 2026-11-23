@@ -402,6 +402,7 @@ function checkSettings(s: unknown): string | null {
     reqEnum(s, "homeMainFigure", ["remaining", "spent"], at),
     reqEnum(s, "weekStart", ["monday", "sunday"], at),
     s.simpleMode === undefined || typeof s.simpleMode === "boolean" ? null : `${at}.simpleMode が true/false ではありません`,
+    s.hiddenSummarySections === undefined || (Array.isArray(s.hiddenSummarySections) && s.hiddenSummarySections.every((key: unknown) => typeof key === "string")) ? null : `${at}.hiddenSummarySections が文字列の配列ではありません`,
     Number.isSafeInteger(s.backupReminderDays) && (s.backupReminderDays as number) >= 0 ? null : `${at}.backupReminderDays が 0 以上の整数ではありません`,
     s.lastBackupAt === null || isIsoDateTime(s.lastBackupAt) ? null : `${at}.lastBackupAt が null または時刻つきの日時ではありません`,
   );

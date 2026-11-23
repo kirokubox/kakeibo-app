@@ -267,7 +267,7 @@ export default function App() {
 
     return (
       <div className="app">
-        <SummaryView tabBar={tabBar} today={today} weekStart={settings.weekStart} settings={settings} version={dataVersion} onOpenSettings={() => setShowSettings(true)} onEdit={openEdit} onChanged={bump} />
+        <SummaryView tabBar={tabBar} today={today} weekStart={settings.weekStart} settings={settings} version={dataVersion} onOpenSettings={() => setShowSettings(true)} onSettingsChange={updateSettings} onEdit={openEdit} onChanged={bump} />
         {overlays}
       </div>
     );

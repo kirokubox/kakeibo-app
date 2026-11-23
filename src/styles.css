@@ -725,6 +725,10 @@ button.home-card:active { background: var(--kb-surface-2); }
 .tag-bar-button:not(.static):active { opacity: 0.72; }
 .tag-bar-button.static { cursor: default; }
 .tag-bar-button:disabled { opacity: 1; }
+.summary-section-choices { border-top: 1px solid var(--kb-line); }
+.summary-section-choices .setting-row { border-bottom: 1px solid var(--kb-line); }
+.chart-detail { margin-top: var(--kb-space-3); border-top: 1px solid var(--kb-line); padding-top: var(--kb-space-2); }
+.chart-detail h3 { margin-top: 0; }
 .tag-bar-head { display: flex; justify-content: space-between; gap: var(--kb-space-2); font-size: var(--kb-fs-m); }
 .tag-bar-amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tag-detail-list .list > li { position: relative; padding-top: 20px; }

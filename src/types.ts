@@ -227,6 +227,8 @@ export interface Settings {
   lastBackupAt: string | null;
   /** 画面を簡単にする。未設定はオフ */
   simpleMode?: boolean;
+  /** 集計で隠す項目。無い場合は表示モードごとの既定を使う */
+  hiddenSummarySections?: string[];
 }
 
 /** データストア名ごとのレコード型 */

@@ -219,9 +219,10 @@ interface BarProps {
   line?: LineSeries;
   height?: number;
   ariaLabel: string;
+  onSelect?: (index: number) => void;
 }
 
-export function BarChart({ labels, series, stacked = false, line, height = 170, ariaLabel }: BarProps) {
+export function BarChart({ labels, series, stacked = false, line, height = 170, ariaLabel, onSelect }: BarProps) {
   const n = labels.length;
   const values: number[] = [];
   if (stacked) {
@@ -256,6 +257,7 @@ export function BarChart({ labels, series, stacked = false, line, height = 170, 
                   </rect>
                 );
               })}
+              {onSelect && <rect x={PAD.left + slot * i} y={0} width={slot} height={height} fill="transparent" role="button" tabIndex={0} aria-label={`${label}の内訳`} onClick={() => onSelect(i)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(i); } }} />}
             </g>
           );
         }
@@ -271,6 +273,7 @@ export function BarChart({ labels, series, stacked = false, line, height = 170, 
                 </rect>
               );
             })}
+            {onSelect && <rect x={PAD.left + slot * i} y={0} width={slot} height={height} fill="transparent" role="button" tabIndex={0} aria-label={`${label}の内訳`} onClick={() => onSelect(i)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(i); } }} />}
           </g>
         );
       })}

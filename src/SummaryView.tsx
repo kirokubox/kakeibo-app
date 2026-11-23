@@ -11,6 +11,7 @@ import { countedExpense, countedIncome, groupByDay, monthTitle, summarize, weekT
 import { computeAllocation } from "./reimburseLogic";
 import { spendByTx } from "./reserveLogic";
 import { SubscriptionView } from "./SubscriptionView";
+import { hiddenSummarySections, isSummarySectionVisible, SUMMARY_SECTIONS } from "./summarySections";
 import {
   PALETTE,
   TAG_KEYS,
@@ -53,6 +54,7 @@ interface Props {
   onOpenSettings: () => void;
   onEdit: (tx: Transaction) => void;
   onChanged: () => void;
+  onSettingsChange: (settings: Settings) => Promise<void>;
 }
 
 const KIND_LABELS: Record<SummaryPeriodKind, string> = { week: "週", month: "月", year: "年", custom: "任意" };
@@ -75,13 +77,18 @@ interface DrillStep {
 }
 
 /** 集計タブ：開閉なしで縦に並べる（キロクカレンダーと同じ考え方） */
-export function SummaryView({ tabBar, today, weekStart, settings, version, onOpenSettings, onEdit, onChanged }: Props) {
+export function SummaryView({ tabBar, today, weekStart, settings, version, onOpenSettings, onEdit, onChanged, onSettingsChange }: Props) {
   const { data, error } = useAllData(version);
   const [period, setPeriod] = useState<SummaryPeriod>(() => periodAround("month", today, undefined, weekStart));
   const [kind, setKind] = useState<CategoryKind>("expense");
   const [path, setPath] = useState<DrillStep[]>([]);
   const [selectedTag, setSelectedTag] = useState<Tag | null>(null);
   const [focusTags, setFocusTags] = useState(false);
+  const [selectedTagMonth, setSelectedTagMonth] = useState<number | null>(null);
+  const [selectedIncomeMonth, setSelectedIncomeMonth] = useState<number | null>(null);
+  const [selectedPayday, setSelectedPayday] = useState<number | null>(null);
+  const [showSections, setShowSections] = useState(false);
+  const [showUntagged, setShowUntagged] = useState(false);
   const [assetSel, setAssetSel] = useState<Id[]>([]);
   const [adjusting, setAdjusting] = useState<Transaction | null>(null);
   const [toast, showToast] = useToast();
@@ -113,6 +120,12 @@ export function SummaryView({ tabBar, today, weekStart, settings, version, onOpe
 
   const changeKind = (k: SummaryPeriodKind) => setPeriod((p) => periodAround(k, switchDay(p, today, weekStart), p, weekStart));
   const shift = (n: number) => setPeriod((p) => shiftSummaryPeriod(p, n));
+  const visible = (key: string) => isSummarySectionVisible(settings, key);
+  const toggleSection = (key: string) => {
+    const hidden = hiddenSummarySections(settings);
+    void onSettingsChange({ ...settings, hiddenSummarySections: hidden.includes(key) ? hidden.filter((item) => item !== key) : [...hidden, key] });
+  };
+  const shortDate = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}`;
 
   const title = (() => {
     if (period.kind === "week") return weekTitle(period.anchor);
@@ -148,7 +161,7 @@ export function SummaryView({ tabBar, today, weekStart, settings, version, onOpe
       )}
       {period.kind !== "custom" && (
         <p className="field-hint center">
-          {range.start} 〜 {range.end}（月・年は暦月・暦年）
+          {shortDate(range.start)}〜{shortDate(range.end)}
         </p>
       )}
     </>
@@ -351,7 +364,7 @@ export function SummaryView({ tabBar, today, weekStart, settings, version, onOpe
           </section>
         )}
 
-        {breakdown && categories && (
+        {visible("category") && breakdown && categories && (
           <section className="card summary-section" aria-label="分類別">
             <h2>分類別</h2>
             <div className="segmented" role="group" aria-label="支出か収入か">
@@ -381,7 +394,7 @@ export function SummaryView({ tabBar, today, weekStart, settings, version, onOpe
           </section>
         )}
 
-        {tags && (
+        {visible("tag") && tags && (
           <section className="card summary-section" aria-label="タグ別">
             <h2>タグ別（支出）</h2>
             <ul className="tag-bars">
@@ -389,9 +402,8 @@ export function SummaryView({ tabBar, today, weekStart, settings, version, onOpe
                 <li key={r.tag}>
                   <button
                     type="button"
-                    className={`tag-bar-button${r.tag === "none" ? " static" : ""}`}
-                    disabled={r.tag === "none"}
-                    onClick={() => r.tag !== "none" && setSelectedTag(r.tag as Tag)}
+                    className="tag-bar-button"
+                    onClick={() => r.tag === "none" ? setShowUntagged((current) => !current) : setSelectedTag(r.tag as Tag)}
                   >
                   <div className="tag-bar-head">
                     <span>
@@ -401,7 +413,7 @@ export function SummaryView({ tabBar, today, weekStart, settings, version, onOpe
                     <span className="tag-bar-amount">
                       {formatYen(r.amount)}（{percent(r.ratio)}）
                     </span>
-                    {r.tag !== "none" && <Icon name="chevron-right" size={16} />}
+                    <Icon name="chevron-right" size={16} />
                   </div>
                   <div className="hbar">
                     <span style={{ width: `${Math.round(r.ratio * 100)}%`, background: TAG_COLORS[r.tag] }} />
@@ -411,19 +423,19 @@ export function SummaryView({ tabBar, today, weekStart, settings, version, onOpe
               ))}
             </ul>
             <h3>直近12か月の推移</h3>
-            <label className="field-hint"><input type="checkbox" checked={focusTags} onChange={(e) => setFocusTags(e.target.checked)} /> 満足・反省だけ表示</label>
-            <BarChart labels={months12} series={focusTags ? tagSeries.filter((s) => s.key === "satisfied" || s.key === "regret") : tagSeries} stacked ariaLabel="タグ別の支出の推移（積み上げ棒）" />
+            {showUntagged && <p className="field-hint">固定費などの直近12か月合計：{formatYen(tagMonths.reduce((sum, m) => sum + m.values.none, 0))}</p>}
+            <div className="segmented" role="group" aria-label="表示するタグ"><button type="button" className={`seg${!focusTags ? " on" : ""}`} aria-pressed={!focusTags} onClick={() => setFocusTags(false)}>すべて</button><button type="button" className={`seg${focusTags ? " on" : ""}`} aria-pressed={focusTags} onClick={() => setFocusTags(true)}>満足・反省</button></div>
+            <BarChart labels={months12} series={focusTags ? tagSeries.filter((s) => s.key === "satisfied" || s.key === "regret") : tagSeries} stacked ariaLabel="タグ別の支出の推移（積み上げ棒）" onSelect={setSelectedTagMonth} />
             <Legend items={(focusTags ? tagSeries.filter((s) => s.key === "satisfied" || s.key === "regret") : tagSeries).map((s) => ({ label: s.label, color: s.color }))} />
-            <h3>タグの月ごとの割合</h3>
-            <ul className="list">{tagMonths.map((m) => {
+            {selectedTagMonth !== null && tagMonths[selectedTagMonth] && <div className="chart-detail"><h3>{monthLabel(tagMonths[selectedTagMonth].month)}</h3><ul className="list">{(() => {
+              const m = tagMonths[selectedTagMonth];
               const total = TAG_KEYS.reduce((sum, key) => sum + m.values[key], 0);
-              return <li className="list-row static" key={m.month}><span>{m.month}</span><span>{(focusTags ? (["satisfied", "regret"] as const) : TAG_KEYS).map((key) => `${TAG_KEY_LABELS[key]} ${percent(total ? m.values[key] / total : 0)}`).join(" / ")}</span></li>;
-            })}</ul>
-            <p className="field-hint">固定費など（タグなし）の直近12か月合計：{formatYen(tagMonths.reduce((sum, m) => sum + m.values.none, 0))}</p>
+              return TAG_KEYS.map((key) => <li className="list-row static" key={key}><span>{TAG_KEY_LABELS[key]}</span><span>{formatYen(m.values[key])}（{percent(total ? m.values[key] / total : 0)}）</span></li>);
+            })()}</ul></div>}
           </section>
         )}
 
-        {data && (
+        {visible("budget") && data && (
           <section className="card summary-section" aria-label="予算と実績">
             <h2>予算と実績</h2>
             <h3>週（直近12週）</h3>
@@ -445,7 +457,7 @@ export function SummaryView({ tabBar, today, weekStart, settings, version, onOpe
           </section>
         )}
 
-        {data && (
+        {visible("income") && data && (
           <section className="card summary-section" aria-label="月ごとの収入と支出">
             <h2>月ごとの収入と支出（直近12か月）</h2>
             <BarChart
@@ -456,20 +468,20 @@ export function SummaryView({ tabBar, today, weekStart, settings, version, onOpe
               ]}
               line={{ key: "diff", label: "差額", color: "#2f8f6b", values: incomeExpense.map((m) => m.diff) }}
               ariaLabel="月ごとの収入と支出と差額"
+              onSelect={setSelectedIncomeMonth}
             />
             <Legend items={[{ label: "収入", color: INCOME }, { label: "支出", color: EXPENSE }, { label: "差額（収入−支出）", color: "#2f8f6b" }]} />
-            <h3>貯蓄率（収入−支出）÷収入</h3>
-            <ul className="list">{incomeExpense.map((m) => <li className="list-row static" key={m.month}><span>{m.month}</span><span>{savingsRate(m.income, m.expense) === null ? "—（収入なし）" : percent(savingsRate(m.income, m.expense)!)}</span></li>)}</ul>
+            {selectedIncomeMonth !== null && incomeExpense[selectedIncomeMonth] && (() => { const m = incomeExpense[selectedIncomeMonth]; const rate = savingsRate(m.income, m.expense); return <div className="chart-detail"><h3>{monthLabel(m.month)}</h3><dl className="rows"><div className="row"><dt>収入</dt><dd>{formatYen(m.income)}</dd></div><div className="row"><dt>支出</dt><dd>{formatYen(m.expense)}</dd></div><div className="row"><dt>差額</dt><dd>{formatYen(m.diff)}</dd></div>{rate !== null && <div className="row"><dt>残った割合</dt><dd>{percent(rate)}</dd></div>}</dl></div>; })()}
           </section>
         )}
 
-        {data && <section className="card summary-section" aria-label="給料日区切りの使える額">
+        {visible("payday") && data && <section className="card summary-section" aria-label="給料日区切りの使える額">
           <h2>給料日区切りの使える額（直近12区切り）</h2>
-          <BarChart labels={paydayBars.map((b) => b.start.slice(5))} series={[{ key: "usable", label: "使える額", color: PALETTE[0], values: paydayBars.map((b) => b.usable) }]} ariaLabel="給料日区切りの使える額" />
-          <ul className="list">{paydayBars.map((b) => <li className="list-row static" key={b.start}><span>{b.start}〜{b.end}{b.current ? `（${b.date}時点）` : "（末日時点）"}</span><span>{formatYen(b.usable)}</span></li>)}</ul>
+          <BarChart labels={paydayBars.map((b) => shortDate(b.start))} series={[{ key: "usable", label: "使える額", color: PALETTE[0], values: paydayBars.map((b) => b.usable) }]} ariaLabel="給料日区切りの使える額" onSelect={setSelectedPayday} />
+          {selectedPayday !== null && paydayBars[selectedPayday] && (() => { const b = paydayBars[selectedPayday]; return <div className="chart-detail"><h3>{shortDate(b.start)}〜{shortDate(b.end)}</h3><p>{b.current ? "今日の時点" : "区切りの末日時点"}：{formatYen(b.usable)}</p></div>; })()}
         </section>}
 
-        {assets && (
+        {visible("asset") && assets && (
           <section className="card summary-section" aria-label="資産の残高の推移">
             <h2>資産の残高の推移（月末）</h2>
             <LineChart labels={months12} series={assetSeries} ariaLabel="使える資産の合計と、選んだ資産の月末残高" />
@@ -485,7 +497,7 @@ export function SummaryView({ tabBar, today, weekStart, settings, version, onOpe
           </section>
         )}
 
-        {adjust && (
+        {visible("adjust") && adjust && (
           <section className="card summary-section" aria-label="残高修正">
             <h2>残高修正</h2>
             {adjust.count === 0 ? (
@@ -523,9 +535,10 @@ export function SummaryView({ tabBar, today, weekStart, settings, version, onOpe
           </section>
         )}
 
-        {data && txs && (
+        {visible("subscription") && data && txs && (
           <SubscriptionView transactions={txs} reviews={data.subscriptionReviews} today={today} showToast={showToast} onChanged={onChanged} />
         )}
+        <section className="card summary-section" aria-label="表示する項目"><button type="button" className="setting-row" onClick={() => setShowSections((current) => !current)}><span className="setting-label">表示する項目</span><Icon name="chevron-right" size={18} /></button>{showSections && <div className="summary-section-choices">{SUMMARY_SECTIONS.map(([key, label]) => <button key={key} type="button" className="setting-row" aria-pressed={visible(key)} onClick={() => toggleSection(key)}><span className="setting-label">{label}</span><span className="setting-value">{visible(key) ? "オン" : "オフ"}</span></button>)}</div>}</section>
         <div className="fab-space" aria-hidden="true" />
       </main>
       {tabBar}
