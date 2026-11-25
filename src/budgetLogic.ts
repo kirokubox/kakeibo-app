@@ -717,7 +717,7 @@ export interface HomeSummary {
   firstUse: boolean;
   week: BudgetFigure & { bars: Array<{ date: string; amount: number }>; topCategories: VariableCategoryTotal[] };
   /** weeks：区切りの中の週ごとの使った額（「今月」の棒） */
-  month: BudgetFigure & { weeks: Array<{ start: string; end: string; amount: number }> };
+  month: BudgetFigure & { weeks: Array<{ start: string; end: string; amount: number }>; topCategories: VariableCategoryTotal[] };
   reserveTotal: number;
   /** 今の給料日が来ているのに給料がまだ入っていない（その給料日） */
   salaryPending: string | null;
@@ -789,6 +789,7 @@ export function summarizeHome(data: BudgetData, snapshots: readonly BudgetSnapsh
       spent: monthSpent,
       remaining: monthSnap ? monthSnap.amount - monthSpent : null,
       weeks: variableByWeek(txs, monthRangeNow, s.weekStart ?? "monday", spentMap),
+      topCategories: variableCategoryTotals(txs, data.categories, monthRangeNow, spentMap).slice(0, 3),
     },
     reserveTotal: usable.reserveTotal,
     salaryPending,

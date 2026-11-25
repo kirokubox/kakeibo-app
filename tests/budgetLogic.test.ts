@@ -386,6 +386,26 @@ test("ホームの数字：今週・今月の使った額とあと◯円、取�
   assert.equal(none.week.waiting, false);
 });
 
+test("ホームの今月の上位3：今月の区切りの変動費を親分類で金額順に3つまで。同額は名前順、変動費がなければ空", () => {
+  const categories = [category("p1", { name: "あ食" }), category("p2", { name: "い楽" }), category("p3", { name: "う服" }), category("p4", { name: "え雑" })];
+  const d = data({
+    accounts: [account("a1", { openingBalance: 500000 })],
+    categories,
+    transactions: [
+      tx("t1", { date: "2026-10-24", amount: 1000, tag: "daily", categoryId: "p1" }), // 先週（今月だけ）
+      tx("t2", { date: "2026-10-26", amount: 1000, tag: "daily", categoryId: "p2" }), // p1と同額
+      tx("t3", { date: "2026-10-27", amount: 3000, tag: "daily", categoryId: "p3" }),
+      tx("t4", { date: "2026-10-27", amount: 500, tag: "daily", categoryId: "p4" }),
+      tx("t5", { date: "2026-10-27", amount: 9000, categoryId: "p4" }), // タグなしは入らない
+      tx("t6", { date: "2026-10-20", amount: 7000, tag: "daily", categoryId: "p4" }), // 今月の前
+    ],
+  });
+  const snapshots = [snap("m", "month", "2026-10-23", "2026-11-24", 200000)];
+  const h = summarizeHome(d, snapshots, S, "2026-10-27");
+  assert.deepEqual(h.month.topCategories.map((c) => [c.name, c.amount]), [["う服", 3000], ["あ食", 1000], ["い楽", 1000]]);
+  assert.equal(summarizeHome(data({ accounts: [account("a1")] }), [], S, "2026-10-27").month.topCategories.length, 0);
+});
+
 test("バックアップのお知らせ", () => {
   const base = defaultSettings();
   assert.equal(backupNotice({ ...base, lastBackupAt: null }, false, "2026-10-26"), null);

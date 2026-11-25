@@ -127,6 +127,24 @@ function Remaining({ remaining, unit }: { remaining: number; unit: string }) {
   );
 }
 
+/** 多かった分類の上位（今週・今月で共通。見た目も同じ） */
+function TopCategories({ label, categories }: { label: string; categories: Array<{ id: string | null; name: string; amount: number }> }) {
+  if (categories.length === 0) return null;
+  return (
+    <div className="week-top-categories">
+      <span className="home-label">{label}</span>
+      <ul>
+        {categories.map((category) => (
+          <li key={category.id ?? "none"}>
+            <span>{category.name}</span>
+            <span>{formatYen(category.amount)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** 一番大きい数字のカード(今週)。設定 homeMainFigure で「あと◯円」か「使った額」を大きく出す */
 export function WeekCard({ week, bars, topCategories, figure, today, hasData, onRecalc, limitText, manual, switcher, simple = false }: Common & { week: BudgetFigure; bars: BarProps["bars"]; topCategories: Array<{ id: string | null; name: string; amount: number }>; figure: HomeMainFigure; today: string; hasData: boolean; /** かんたん表示：予算の決め直しの「…」を出さない */ simple?: boolean }) {
   const budget = week.snapshot?.amount ?? null;
@@ -168,19 +186,7 @@ export function WeekCard({ week, bars, topCategories, figure, today, hasData, on
             </>
           )}
           <DayBars bars={bars} today={today} />
-          {topCategories.length > 0 && (
-            <div className="week-top-categories">
-              <span className="home-label">今週多かったもの</span>
-              <ul>
-                {topCategories.map((category) => (
-                  <li key={category.id ?? "none"}>
-                    <span>{category.name}</span>
-                    <span>{formatYen(category.amount)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <TopCategories label="今週多かったもの" categories={topCategories} />
           <span className="home-hint">使った額は明細の日付で数えます。今週内の先の日付は今週に入り、来週以降は入りません。</span>
           {limitText && <span className="home-limit">{limitText}</span>}
         </>
@@ -190,7 +196,7 @@ export function WeekCard({ week, bars, topCategories, figure, today, hasData, on
 }
 
 /** 今月の予算のカード */
-export function MonthCard({ month, hasData, onRecalc, onOpenPayroll, limitText, manual, switcher, today }: Common & { month: BudgetFigure & { weeks?: Array<{ start: string; end: string; amount: number }> }; hasData: boolean; today: string }) {
+export function MonthCard({ month, hasData, onRecalc, onOpenPayroll, limitText, manual, switcher, today }: Common & { month: BudgetFigure & { weeks?: Array<{ start: string; end: string; amount: number }>; topCategories?: Array<{ id: string | null; name: string; amount: number }> }; hasData: boolean; today: string }) {
   const budget = month.snapshot?.amount ?? null;
   return (
     <section className={`card home-card${switcher ? " main-card" : ""}`} aria-label="今月の予算">
@@ -223,6 +229,7 @@ export function MonthCard({ month, hasData, onRecalc, onOpenPayroll, limitText, 
             <span>予算 {formatYen(budget)}</span>
           </span>
           {month.weeks && month.weeks.length > 0 && <WeekBars weeks={month.weeks} today={today} />}
+          {month.topCategories && <TopCategories label="今月多かったもの" categories={month.topCategories} />}
           {limitText && <span className="home-limit">{limitText}</span>}
         </>
       )}
