@@ -1,8 +1,8 @@
 {
   "id": "/kakeibo-app/?app=kakeibo",
-  "name": "家計簿",
-  "short_name": "家計簿",
-  "description": "使える額を見ながら、収入・支出・資産を記録する、自分用の家計簿",
+  "name": "おかね感覚",
+  "short_name": "おかね感覚",
+  "description": "金銭感覚を、正確に。給料日までに使える額を見ながら、収入・支出・資産を記録する家計簿",
   "start_url": "/kakeibo-app/",
   "scope": "/kakeibo-app/",
   "display": "standalone",

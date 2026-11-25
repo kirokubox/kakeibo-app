@@ -325,3 +325,19 @@ export function shouldClearEstimated(originalAmount: number, newAmount: number |
 export function estimatedTransactions(txs: readonly Transaction[]): Transaction[] {
   return txs.filter((t) => t.deletedAt === null && t.estimated === true).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
 }
+
+/**
+ * 似た繰り返し（v0.19.0）：これから作る繰り返しと、種類が同じで「同じ小分類」か「同じ内容（空でない）」の、終わっていない繰り返し。
+ * 繰り返しを作るときに「似た繰り返しがあります」を出して、二重登録を防ぐ（本人 2026-11-25「繰り返しの項目が多くなると探しにくくて2重登録してた」）。
+ * 振替は出金・入金の資産が同じものを似たものとする。
+ */
+export function similarRecurrings(recs: readonly Recurring[], template: TransactionTemplate, today: string, exceptId?: string): Recurring[] {
+  const content = template.content.trim();
+  return recs.filter((r) => {
+    if (r.deletedAt !== null || r.id === exceptId || isEnded(r, today)) return false;
+    const t = r.template;
+    if (t.type !== template.type) return false;
+    if (template.type === "transfer") return t.accountId === template.accountId && t.toAccountId === template.toAccountId;
+    return (template.categoryId !== undefined && t.categoryId === template.categoryId) || (content !== "" && t.content.trim() === content);
+  });
+}

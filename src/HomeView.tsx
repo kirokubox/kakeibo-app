@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { AdjustSheet } from "./AdjustSheet";
 import type { EntryMode } from "./EntryView";
 import { debitDueNotices, upcomingCardDebits } from "./cardDebitLogic";
-import { MonthCard, WeekCard } from "./BudgetCard";
+import { BudgetSwitchCard } from "./BudgetCard";
 import { backupNotice, summarizeHome } from "./budgetLogic";
 import { recalcBudget, useBudgetBundle } from "./budgetStore";
 import { formatMonthDayWeekday } from "./dateUtils";
@@ -12,6 +12,7 @@ import { Icon } from "./Icon";
 import { formatYen } from "./money";
 import { OutstandingView } from "./OutstandingView";
 import { ReservesView } from "./ReservesView";
+import { SearchView } from "./SearchView";
 import { estimatedTransactions } from "./recurrence";
 import { outstandingGroups, outstandingSummary } from "./reimburseLogic";
 import { isReviewDue } from "./subscriptionLogic";
@@ -46,7 +47,7 @@ interface Props {
   onChanged: () => void;
 }
 
-type Page = "home" | "reserves" | "outstanding";
+type Page = "home" | "reserves" | "outstanding" | "search";
 
 /** ホーム：今週あと◯円、給料日までに使える額、今月の予算、取り置き、お知らせ、最近の明細 */
 export function HomeView({ tabBar, today, version, settings, onOpenSettings, onAdd, onEdit, onOpenEntry, onOpenPayroll, onGoEntries, onGoAssets, onGoCategories, onGoSummary, onChanged }: Props) {
@@ -88,6 +89,8 @@ export function HomeView({ tabBar, today, version, settings, onOpenSettings, onA
   if (page === "reserves" && bundle && summary) {
     return <ReservesView bundle={bundle} today={today} usable={summary.usable.usable} onBack={() => setPage("home")} onChanged={onChanged} showToast={showToast} />;
   }
+  // ホームの右上の虫めがね（v0.19.0。本人「ホームの右上にも虫眼鏡出してほしい」）。明細タブと同じ検索
+  if (page === "search") return <SearchView today={today} version={version} onBack={() => setPage("home")} onEdit={onEdit} onChanged={onChanged} />;
   if (page === "outstanding") {
     return (
       <>
@@ -126,6 +129,9 @@ export function HomeView({ tabBar, today, version, settings, onOpenSettings, onA
     <>
       <header className="topbar">
         <h1 className="topbar-title">ホーム</h1>
+        <button type="button" className="icon-btn" aria-label="検索" onClick={() => setPage("search")}>
+          <Icon name="search" size={22} />
+        </button>
         <button type="button" className="icon-btn" aria-label="設定" onClick={onOpenSettings}>
           <Icon name="settings" size={22} />
         </button>
@@ -141,27 +147,34 @@ export function HomeView({ tabBar, today, version, settings, onOpenSettings, onA
           <>
             {summary.firstUse && <WelcomeCard onGoAssets={onGoAssets} onGoCategories={onGoCategories} onAdd={() => onAdd(today)} onOpenSettings={onOpenSettings} />}
             {/* かんたん表示でも「今週あと◯円」は残す（2026-11-23 本人「残す」）。決め直しの入口だけ隠す */}
-            <WeekCard
-              week={summary.week}
-              bars={summary.week.bars}
-              topCategories={summary.week.topCategories}
-              figure={settings.homeMainFigure}
-              today={today}
-              hasData={summary.hasTransactions}
-              onRecalc={recalc("week")}
-              manual={summary.manual}
-              limitText={summary.limit ? `使い切れる上限：週 ${formatYen(summary.limit.week)}` : null}
-              simple={settings.simpleMode === true}
+            <BudgetSwitchCard
+              week={{
+                week: summary.week,
+                bars: summary.week.bars,
+                topCategories: summary.week.topCategories,
+                figure: settings.homeMainFigure,
+                today,
+                hasData: summary.hasTransactions,
+                onRecalc: recalc("week"),
+                manual: summary.manual,
+                limitText: summary.limit ? `使い切れる上限：週 ${formatYen(summary.limit.week)}` : null,
+                simple: settings.simpleMode === true,
+              }}
+              month={
+                settings.simpleMode
+                  ? null
+                  : {
+                      month: summary.month,
+                      hasData: summary.hasTransactions,
+                      onRecalc: recalc("month"),
+                      onOpenPayroll,
+                      manual: summary.manual,
+                      today,
+                      limitText: summary.limit && summary.limit.month !== null ? `使い切れる上限：月 ${formatYen(summary.limit.month)}` : null,
+                    }
+              }
             />
             <UsableCard summary={summary} />
-            {!settings.simpleMode && <MonthCard
-              month={summary.month}
-              hasData={summary.hasTransactions}
-              onRecalc={recalc("month")}
-              onOpenPayroll={onOpenPayroll}
-              manual={summary.manual}
-              limitText={summary.limit && summary.limit.month !== null ? `使い切れる上限：月 ${formatYen(summary.limit.month)}` : null}
-            />}
             {!settings.simpleMode && debits.length > 0 && (
               <section className="card list-card debit-list" aria-label="引き落とし予定">
                 <h2 className="list-head">

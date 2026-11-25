@@ -49,6 +49,7 @@ import {
   recurringToRepeat,
   repeatLabel,
   shouldClearEstimated,
+  similarRecurrings,
   templateAsTransaction,
   validateRepeat,
 } from "./recurrence";
@@ -132,7 +133,7 @@ interface Props {
 
 /** account = 資産（振替では出金）、to = 振替の入金、fee = 振替の手数料 */
 type Panel = "account" | "to" | "category" | "amount" | "fee" | null;
-type Sheet = null | "discard" | "delete" | "favorites" | "reimb" | "settle" | "repeat" | "deleteRec" | "reserve";
+type Sheet = null | "discard" | "delete" | "favorites" | "reimb" | "settle" | "repeat" | "deleteRec" | "reserve" | "similar";
 type ErrorKey = MissingField | "to" | "reimb";
 
 
@@ -220,6 +221,9 @@ export function EntryView({ mode, today, simpleMode = false, showToast, onChange
   const isFavMode = mode.kind === "favoriteNew" || mode.kind === "favoriteEdit";
   const initialRepeat = (): RepeatDraft | null => (mode.kind === "recurring" ? recurringToRepeat(mode.rec) : mode.kind === "recurringNew" ? defaultRepeat(today) : null);
   const [repeat, setRepeat] = useState<RepeatDraft | null>(initialRepeat);
+  /** 似た繰り返しの確認（v0.19.0）：見つかった繰り返しの説明と、確かめたうえで作るか */
+  const [similar, setSimilar] = useState<{ lines: string[]; andContinue: boolean } | null>(null);
+  const similarOk = useRef(false);
   const [initialRepeatJson, setInitialRepeatJson] = useState(() => JSON.stringify(initialRepeat()));
   /** 見込みの明細を開いたときの「実額にした」のチェック */
   const [actual, setActual] = useState(false);
@@ -688,6 +692,25 @@ export function EntryView({ mode, today, simpleMode = false, showToast, onChange
         return;
       }
     }
+    // 新しく繰り返しを作るとき：似た繰り返しがあれば、作る前に一度だけ知らせる（止めない。確かめて作れる）
+    const makesNewRecurring = mode.kind === "recurringNew" || (repeat !== null && mode.kind !== "recurring" && !existing?.recurringId);
+    if (makesNewRecurring && !similarOk.current) {
+      const template = isTransfer ? transferToTemplate(t) : draftToTemplate(d);
+      const found = similarRecurrings(await getAll("recurrings"), template, today);
+      if (found.length > 0) {
+        const catName = (id?: Id) => {
+          const c = categories.find((x) => x.id === id);
+          return c ? c.name : "";
+        };
+        setSimilar({
+          lines: found.slice(0, 3).map((r) => `${r.template.content || catName(r.template.categoryId) || "（内容なし）"}・${repeatLabel(recurringToRepeat(r))}・${formatYen(r.template.amount)}`),
+          andContinue,
+        });
+        setSheet("similar");
+        return;
+      }
+    }
+    similarOk.current = false;
     // 見込みの明細：金額を変えた・「実額にした」にチェックを入れたら、見込みの印を外す
     if (existing?.estimated && shouldClearEstimated(existing.amount, record.amount, actual)) delete record.estimated;
     setSaving(true);
@@ -1427,6 +1450,19 @@ export function EntryView({ mode, today, simpleMode = false, showToast, onChange
           onRemove={() => {
             setRepeat(null);
             setSheet(null);
+          }}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet === "similar" && similar && (
+        <ConfirmSheet
+          title="似た繰り返しがあります"
+          message={[...similar.lines, "", "同じものを二重に作っていないか確かめてください。別のものなら、このまま作れます。"].join("\n")}
+          confirmLabel="このまま作る"
+          onConfirm={() => {
+            similarOk.current = true;
+            setSheet(null);
+            void save(similar.andContinue);
           }}
           onClose={() => setSheet(null)}
         />

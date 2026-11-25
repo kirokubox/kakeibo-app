@@ -16,6 +16,7 @@ import {
   salaryEntered,
   summarizeHome,
   variableByDay,
+  variableByWeek,
   variableCategoryTotals,
   variableSpent,
   weekBudgetPlan,
@@ -409,4 +410,23 @@ test("はじめて使う状態のホーム：内訳にマイナスを出さな�
   const withAccount = summarizeHome(data({ accounts: [account("a1", { openingBalance: 0 })] }), [], S, "2026-10-26");
   assert.equal(withAccount.firstUse, false);
   assert.equal(withAccount.hasTransactions, false); // 資産はあるが明細がない：「明細を入れると…」の案内のまま
+});
+
+test("月の中の週ごとの使った額：週の区切りと月の始まり・終わりで切る（v0.19.0）", () => {
+  const txs = [
+    tx("w1", { date: "2026-10-25", amount: 1000, tag: "daily" }), // 日曜（区切りの初日）
+    tx("w2", { date: "2026-10-26", amount: 2000, tag: "daily" }), // 月曜
+    tx("w3", { date: "2026-11-24", amount: 500, tag: "regret" }), // 区切りの最終日
+    tx("w4", { date: "2026-11-25", amount: 9999, tag: "daily" }), // 区切りの外
+  ];
+  const weeks = variableByWeek(txs, { start: "2026-10-25", end: "2026-11-24" }, "monday", new Map());
+  assert.equal(weeks[0].start, "2026-10-25");
+  assert.equal(weeks[0].end, "2026-10-25");
+  assert.equal(weeks[0].amount, 1000);
+  assert.equal(weeks[1].start, "2026-10-26");
+  assert.equal(weeks[1].end, "2026-11-01");
+  assert.equal(weeks[1].amount, 2000);
+  assert.equal(weeks[weeks.length - 1].end, "2026-11-24");
+  assert.equal(weeks[weeks.length - 1].amount, 500);
+  assert.equal(weeks.reduce((s, w) => s + w.amount, 0), 3500);
 });

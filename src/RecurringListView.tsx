@@ -19,6 +19,14 @@ interface Props {
 type View = "list" | "estimated";
 
 /** 設定の「繰り返し」：一覧（次の日付の早い順）、終わった繰り返し、見込みのままの明細 */
+
+type RecOrder = "next" | "category" | "amount";
+const REC_ORDERS: Array<[RecOrder, string]> = [
+  ["next", "次の日付"],
+  ["category", "分類"],
+  ["amount", "金額"],
+];
+
 export function RecurringListView({ today, onBack }: Props) {
   const [recurrings, setRecurrings] = useState<Recurring[] | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -47,13 +55,37 @@ export function RecurringListView({ today, onBack }: Props) {
   }, [load]);
 
   const accountNames = useMemo(() => new Map(accounts.map((a) => [a.id, a.name])), [accounts]);
+  // 探す・並べ替え（v0.19.0。本人「繰り返しの項目が多くなると探しにくくて2重登録してた」）
+  const [query, setQuery] = useState("");
+  const [order, setOrder] = useState<RecOrder>("next");
   const rows = useMemo(() => {
-    const active = (recurrings ?? []).filter((r) => r.deletedAt === null);
+    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const hit = (r: Recurring) => {
+      if (words.length === 0) return true;
+      const n = categoryNames(categories, r.template.categoryId);
+      const text = [r.template.content, r.template.memo, n?.parent ?? "", n?.child ?? "", accountNames.get(r.template.accountId) ?? ""].join(" ").toLowerCase();
+      return words.every((w) => text.includes(w));
+    };
+    const active = (recurrings ?? []).filter((r) => r.deletedAt === null && hit(r));
     const withNext = active.map((rec) => ({ rec, next: nextOccurrence(rec, today), ended: isEnded(rec, today) }));
-    const running = withNext.filter((x) => !x.ended).sort((a, b) => (a.next?.date ?? "9999").localeCompare(b.next?.date ?? "9999") || a.rec.id.localeCompare(b.rec.id));
+    const catKey = (r: Recurring) => {
+      const n = categoryNames(categories, r.template.categoryId);
+      return n ? `${n.parent}＞${n.child ?? ""}` : "\uffff";
+    };
+    const byNext = (a: { rec: Recurring; next: { date: string } | null }, b: { rec: Recurring; next: { date: string } | null }) =>
+      (a.next?.date ?? "9999").localeCompare(b.next?.date ?? "9999") || a.rec.id.localeCompare(b.rec.id);
+    const running = withNext
+      .filter((x) => !x.ended)
+      .sort((a, b) =>
+        order === "amount"
+          ? b.rec.template.amount - a.rec.template.amount || byNext(a, b)
+          : order === "category"
+            ? catKey(a.rec).localeCompare(catKey(b.rec), "ja") || byNext(a, b)
+            : byNext(a, b),
+      );
     const ended = withNext.filter((x) => x.ended).sort((a, b) => (b.rec.endDate ?? "").localeCompare(a.rec.endDate ?? ""));
     return { running, ended };
-  }, [recurrings, today]);
+  }, [recurrings, today, query, order, categories, accountNames]);
   const estimated = useMemo(() => estimatedTransactions(transactions), [transactions]);
 
   const kindLabel = (t: { type: string; categoryId?: string; accountId: string; toAccountId?: string }) => {
@@ -92,7 +124,7 @@ export function RecurringListView({ today, onBack }: Props) {
             </section>
           ) : (
             <section className="card list-card">
-              <ul className="list sub-list">
+              <ul className="list rec-list">
                 {estimated.map((t) => (
                   <li key={t.id}>
                     <button type="button" className="list-row" onClick={() => setEntry({ kind: "edit", tx: t })}>
@@ -159,21 +191,41 @@ export function RecurringListView({ today, onBack }: Props) {
             <Icon name="chevron-right" size={18} />
           </button>
         )}
-        {recurrings !== null && rows.running.length === 0 && rows.ended.length === 0 && (
+        {recurrings !== null && recurrings.some((r) => r.deletedAt === null) && (
+          <div className="rec-tools">
+            <input
+              type="search"
+              className="text-input search-input"
+              placeholder="内容・分類・資産で探す"
+              aria-label="繰り返しを探す"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <div className="segmented" role="tablist" aria-label="並べ替え">
+              {REC_ORDERS.map(([k, label]) => (
+                <button key={k} type="button" role="tab" aria-selected={order === k} className={`seg${order === k ? " on" : ""}`} onClick={() => setOrder(k)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {recurrings !== null && query.trim() !== "" && rows.running.length === 0 && rows.ended.length === 0 && <p className="empty-note">見つかりませんでした</p>}
+        {recurrings !== null && query.trim() === "" && rows.running.length === 0 && rows.ended.length === 0 && (
           <section className="card">
             <p>繰り返しはまだありません。右上の追加から足せます。入力画面の日付の右にある「繰り返し」からも作れます。</p>
           </section>
         )}
         {rows.running.length > 0 && (
           <section className="card list-card">
-            <ul className="list sub-list">{rows.running.map((x) => row(x, false))}</ul>
+            <ul className="list rec-list">{rows.running.map((x) => row(x, false))}</ul>
           </section>
         )}
         {rows.ended.length > 0 && (
           <>
             <h2 className="list-group-title">終わった繰り返し</h2>
             <section className="card list-card">
-              <ul className="list sub-list">{rows.ended.map((x) => row(x, true))}</ul>
+              <ul className="list rec-list">{rows.ended.map((x) => row(x, true))}</ul>
             </section>
           </>
         )}

@@ -18,6 +18,7 @@ import {
   ruleShortLabel,
   scheduledDates,
   shouldClearEstimated,
+  similarRecurrings,
   transactionFromRecurring,
   validateRepeat,
 } from "../src/recurrence.js";
@@ -224,4 +225,22 @@ test("繰り返しの作成・編集：開始日、1回目を保存したら gen
   assert.equal(edited.startDate, "2026-10-25");
   assert.equal(edited.generatedThrough, "2026-10-25");
   assert.equal("endDate" in edited, false);
+});
+
+test("似た繰り返し：同じ小分類か同じ内容。終わった・削除済み・種類違いは数えない（v0.19.0）", () => {
+  const today = "2026-11-25";
+  const recs = [
+    rec({ id: "same-cat", template: { ...template, content: "別の名前" } }),
+    rec({ id: "same-content", template: { ...template, categoryId: "c9", content: "テスト家賃" } }),
+    rec({ id: "other", template: { ...template, categoryId: "c9", content: "電気" } }),
+    rec({ id: "deleted", deletedAt: T0 }),
+    rec({ id: "ended", endDate: "2026-09-30" }),
+    rec({ id: "income", template: { ...template, type: "income" } }),
+  ];
+  const found = similarRecurrings(recs, template, today).map((r) => r.id);
+  assert.deepEqual(found, ["same-cat", "same-content"]);
+  assert.deepEqual(similarRecurrings(recs, template, today, "same-cat").map((r) => r.id), ["same-content"]);
+  const transfer = { type: "transfer" as const, amount: 1000, accountId: "a1", toAccountId: "a2", content: "", memo: "" };
+  const tRecs = [rec({ id: "t1", template: transfer }), rec({ id: "t2", template: { ...transfer, toAccountId: "a3" } })];
+  assert.deepEqual(similarRecurrings(tRecs, transfer, today).map((r) => r.id), ["t1"]);
 });

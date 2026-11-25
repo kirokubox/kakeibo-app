@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { ConfirmSheet } from "./BottomSheet";
 import type { BudgetFigure } from "./budgetLogic";
 import { KebabMenu } from "./KebabMenu";
@@ -30,6 +31,28 @@ function DayBars({ bars, today }: BarProps) {
   );
 }
 
+/** 今月の週ごとの使った額の棒（v0.19.0。今月を選んだとき） */
+function WeekBars({ weeks, today }: { weeks: Array<{ start: string; end: string; amount: number }>; today: string }) {
+  const max = Math.max(1, ...weeks.map((w) => w.amount));
+  return (
+    <div className="bars home-bars" aria-label="週ごとの使った額" style={{ gridTemplateColumns: `repeat(${weeks.length}, 1fr)` }}>
+      {weeks.map((w) => (
+        <div key={w.start} className="bar-col">
+          <span className="bar-amount">{w.amount > 0 ? w.amount.toLocaleString("ja-JP") : ""}</span>
+          <span className="bar-track">
+            <span className="bar-fill" style={{ height: `${Math.round((w.amount / max) * 100)}%` }} />
+          </span>
+          <span className={`bar-day${w.start <= today && today <= w.end ? " today" : ""}`}>{shortDay(w.start)}〜</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function shortDay(date: string): string {
+  return `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}`;
+}
+
 interface Common {
   /** 今の額で決め直す(まだ決まっていなければ決める) */
   onRecalc: () => Promise<void>;
@@ -38,6 +61,27 @@ interface Common {
   limitText?: string | null;
   /** 自分で決めた月の予算か（メニューの文言が変わる） */
   manual?: boolean;
+  /** 今週・今月の切り替え（あるときは見出しの代わりに出し、期間は下に小さく） */
+  switcher?: ReactNode;
+}
+
+function CardHead({ switcher, label, period, menu }: { switcher?: ReactNode; label: string; period: string; menu: ReactNode }) {
+  return switcher ? (
+    <>
+      <div className="home-card-head">
+        {switcher}
+        {menu}
+      </div>
+      <span className="home-period">{period}</span>
+    </>
+  ) : (
+    <div className="home-card-head">
+      <span className="home-label">
+        {label}（{period}）
+      </span>
+      {menu}
+    </div>
+  );
 }
 
 /** 決め直しの確認つき︙メニュー */
@@ -84,14 +128,11 @@ function Remaining({ remaining, unit }: { remaining: number; unit: string }) {
 }
 
 /** 一番大きい数字のカード(今週)。設定 homeMainFigure で「あと◯円」か「使った額」を大きく出す */
-export function WeekCard({ week, bars, topCategories, figure, today, hasData, onRecalc, limitText, manual, simple = false }: Common & { week: BudgetFigure; bars: BarProps["bars"]; topCategories: Array<{ id: string | null; name: string; amount: number }>; figure: HomeMainFigure; today: string; hasData: boolean; /** かんたん表示：予算の決め直しの「…」を出さない */ simple?: boolean }) {
+export function WeekCard({ week, bars, topCategories, figure, today, hasData, onRecalc, limitText, manual, switcher, simple = false }: Common & { week: BudgetFigure; bars: BarProps["bars"]; topCategories: Array<{ id: string | null; name: string; amount: number }>; figure: HomeMainFigure; today: string; hasData: boolean; /** かんたん表示：予算の決め直しの「…」を出さない */ simple?: boolean }) {
   const budget = week.snapshot?.amount ?? null;
   return (
     <section className="card home-card main-card" aria-label="今週">
-      <div className="home-card-head">
-        <span className="home-label">今週（{periodLabel(week.start, week.end)}）</span>
-        {!simple && <RecalcMenu label="今週の予算" onRecalc={onRecalc} manual={manual} />}
-      </div>
+      <CardHead switcher={switcher} label="今週" period={periodLabel(week.start, week.end)} menu={!simple && <RecalcMenu label="今週の予算" onRecalc={onRecalc} manual={manual} />} />
       {week.remaining === null || budget === null ? (
         !hasData ? (
           <span className="home-hint">明細を入れると、今週の予算が決まります</span>
@@ -127,7 +168,7 @@ export function WeekCard({ week, bars, topCategories, figure, today, hasData, on
             </>
           )}
           <DayBars bars={bars} today={today} />
-          {week.remaining < 0 && topCategories.length > 0 && (
+          {topCategories.length > 0 && (
             <div className="week-top-categories">
               <span className="home-label">今週多かったもの</span>
               <ul>
@@ -149,14 +190,11 @@ export function WeekCard({ week, bars, topCategories, figure, today, hasData, on
 }
 
 /** 今月の予算のカード */
-export function MonthCard({ month, hasData, onRecalc, onOpenPayroll, limitText, manual }: Common & { month: BudgetFigure; hasData: boolean }) {
+export function MonthCard({ month, hasData, onRecalc, onOpenPayroll, limitText, manual, switcher, today }: Common & { month: BudgetFigure & { weeks?: Array<{ start: string; end: string; amount: number }> }; hasData: boolean; today: string }) {
   const budget = month.snapshot?.amount ?? null;
   return (
-    <section className="card home-card" aria-label="今月の予算">
-      <div className="home-card-head">
-        <span className="home-label">今月の予算（{periodLabel(month.start, month.end)}）</span>
-        <RecalcMenu label="今月の予算" onRecalc={onRecalc} manual={manual} />
-      </div>
+    <section className={`card home-card${switcher ? " main-card" : ""}`} aria-label="今月の予算">
+      <CardHead switcher={switcher} label="今月の予算" period={periodLabel(month.start, month.end)} menu={<RecalcMenu label="今月の予算" onRecalc={onRecalc} manual={manual} />} />
       {month.remaining === null || budget === null ? (
         !hasData ? (
           <span className="home-hint">明細を入れると、今月の予算が決まります</span>
@@ -184,9 +222,32 @@ export function MonthCard({ month, hasData, onRecalc, onOpenPayroll, limitText, 
             <span>使った額 {formatYen(month.spent)}</span>
             <span>予算 {formatYen(budget)}</span>
           </span>
+          {month.weeks && month.weeks.length > 0 && <WeekBars weeks={month.weeks} today={today} />}
           {limitText && <span className="home-limit">{limitText}</span>}
         </>
       )}
     </section>
   );
+}
+
+/**
+ * ホームの予算のカード（v0.19.0）：「今週｜今月」を切り替える1枚。開くたびに今週（本人 2026-11-25「いつも今週がいいな」）。
+ * かんたん表示では切り替えを出さず、今週だけ。
+ */
+export function BudgetSwitchCard(props: {
+  week: Parameters<typeof WeekCard>[0];
+  month: Parameters<typeof MonthCard>[0] | null;
+}) {
+  const [which, setWhich] = useState<"week" | "month">("week");
+  if (!props.month) return <WeekCard {...props.week} />;
+  const switcher = (
+    <div className="segmented budget-switch" role="tablist" aria-label="予算の期間">
+      {(["week", "month"] as const).map((k) => (
+        <button key={k} type="button" role="tab" aria-selected={which === k} className={`seg${which === k ? " on" : ""}`} onClick={() => setWhich(k)}>
+          {k === "week" ? "今週" : "今月"}
+        </button>
+      ))}
+    </div>
+  );
+  return which === "week" ? <WeekCard {...props.week} switcher={switcher} /> : <MonthCard {...props.month} switcher={switcher} />;
 }

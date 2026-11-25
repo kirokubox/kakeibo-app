@@ -6,7 +6,7 @@ import { nextPayday, paydayOf } from "./businessDay.js";
 import { addDays, addMonths, daysInMonth, isLocalDate, toDateKey } from "./dateUtils.js";
 import { plannedCommitted, plannedStatuses } from "./plannedLogic.js";
 import { isYen } from "./money.js";
-import { countedExpense, inRange, monthRange, weekRange } from "./periodLogic.js";
+import { countedExpense, inRange, monthRange, weekRange, weekStartOf } from "./periodLogic.js";
 import { reserveBalances, spendByTx, totalReserveBalance } from "./reserveLogic.js";
 import { paydaysBetween, recurringOccurrencesBetween } from "./scheduleLogic.js";
 import type { Account, Base, BudgetBasis, BudgetMode, BudgetSnapshot, Category, DataSet, HolidayShift, Id, Recurring, Settings, Transaction, TransactionTemplate, WeekStart } from "./types.js";
@@ -126,6 +126,22 @@ export function variableByDay(txs: readonly Transaction[], start: string, days: 
     const date = addDays(start, i);
     return { date, amount: map.get(date) ?? 0 };
   });
+}
+
+/**
+ * 区切り（月）の中の週ごとの使った額（変動費）。週は weekStart で区切り、区切りの始まり・終わりで切る。
+ * ホームの予算のカードで「今月」を選んだときの棒（v0.19.0）
+ */
+export function variableByWeek(txs: readonly Transaction[], span: DateSpan, weekStart: WeekStart, spent: ReadonlyMap<Id, number>): Array<{ start: string; end: string; amount: number }> {
+  const weeks: Array<{ start: string; end: string; amount: number }> = [];
+  let cur = span.start;
+  while (cur <= span.end) {
+    const weekEnd = addDays(weekStartOf(cur, weekStart), 6);
+    const end = weekEnd < span.end ? weekEnd : span.end;
+    weeks.push({ start: cur, end, amount: variableSpent(txs, { start: cur, end }, spent) });
+    cur = addDays(end, 1);
+  }
+  return weeks;
 }
 
 export interface VariableCategoryTotal {
@@ -700,7 +716,8 @@ export interface HomeSummary {
   /** 資産も明細もない（はじめて開いた人）。内訳の数字・見通しの表は出さず、「はじめに」を出す */
   firstUse: boolean;
   week: BudgetFigure & { bars: Array<{ date: string; amount: number }>; topCategories: VariableCategoryTotal[] };
-  month: BudgetFigure;
+  /** weeks：区切りの中の週ごとの使った額（「今月」の棒） */
+  month: BudgetFigure & { weeks: Array<{ start: string; end: string; amount: number }> };
   reserveTotal: number;
   /** 今の給料日が来ているのに給料がまだ入っていない（その給料日） */
   salaryPending: string | null;
@@ -771,6 +788,7 @@ export function summarizeHome(data: BudgetData, snapshots: readonly BudgetSnapsh
       waiting: !manual && !monthSnap && monthWaitingForSalary(data, s, today),
       spent: monthSpent,
       remaining: monthSnap ? monthSnap.amount - monthSpent : null,
+      weeks: variableByWeek(txs, monthRangeNow, s.weekStart ?? "monday", spentMap),
     },
     reserveTotal: usable.reserveTotal,
     salaryPending,
