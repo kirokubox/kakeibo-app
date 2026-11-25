@@ -280,6 +280,10 @@ button.setting-row:active { background: var(--kb-surface-2); }
 .setting-label { flex: 1; }
 .setting-value { color: var(--kb-text-2); text-align: right; }
 .setting-row svg { color: var(--kb-text-3); }
+/* 設定：一般アプリの形（v0.20.0）。見出しは小さく、説明はまとまりの下に小さく、オン・オフはスイッチ */
+.settings-group h2 { color: var(--kb-text-2); font-size: var(--kb-fs-s); font-weight: 600; }
+.settings-foot { margin: calc(-1 * var(--kb-space-2)) var(--kb-space-2) var(--kb-space-2); color: var(--kb-text-2); font-size: var(--kb-fs-xs); line-height: 1.5; }
+.switch-row { cursor: pointer; }
 
 /* ボトムシート・トースト */
 .sheet-backdrop {

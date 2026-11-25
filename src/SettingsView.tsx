@@ -81,6 +81,16 @@ function SettingRow({ label, value, onClick }: { label: string; value: string; o
   );
 }
 
+/** オン・オフはその場で切り替える（一般アプリの設定と同じ。開かない。v0.20.0） */
+function SwitchRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="setting-row switch-row">
+      <span className="setting-label">{label}</span>
+      <input type="checkbox" role="switch" className="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    </label>
+  );
+}
+
 const PERSISTENCE_TEXT: Record<PersistenceState, string> = {
   granted: "許可されています",
   denied: "許可されていません",
@@ -97,6 +107,8 @@ export function SettingsView({ settings, initialCategoryPage = null, persistence
   /** 「設定も読み込む」（今の設定を、ファイルの設定で置き換える）。本人用の初期データのときだけ、初期でオン */
   const [doSettings, setDoSettings] = useState(false);
   const [page, setPage] = useState<null | "expense" | "income">(initialCategoryPage);
+  /** データの下の画面：AIに渡す書き出し（v0.20.0。前は設定の2番目に大きなカードで出ていた） */
+  const [aiPage, setAiPage] = useState(false);
   /** 入力の設定の下の画面：繰り返し・よく使う入力・給料明細のひな形・給料明細を入れる */
   const [inputPage, setInputPage] = useState<null | { page: "recurring" } | { page: "favorites" } | { page: "payroll" } | { page: "payrollEntry"; payrollId: string }>(null);
   const [sheet, setSheet] = useState<SettingSheet | null>(null);
@@ -182,6 +194,21 @@ export function SettingsView({ settings, initialCategoryPage = null, persistence
   const nothingToWrite = totals !== null && !doSettings && (doAdd ? totals.add : 0) + (doUpdate ? totals.update : 0) === 0;
 
   if (page) return <CategoriesView initialKind={page} onBack={() => setPage(null)} />;
+  if (aiPage) {
+    return (
+      <>
+        <header className="topbar">
+          <button type="button" className="icon-btn" aria-label="戻る" onClick={() => setAiPage(false)}>
+            <Icon name="chevron-left" size={22} />
+          </button>
+          <h1 className="topbar-title">AIに渡す書き出し</h1>
+        </header>
+        <main className="content">
+          <AiExportCard weekStart={settings.weekStart} />
+        </main>
+      </>
+    );
+  }
   const today = todayKey();
   if (inputPage?.page === "recurring") return <RecurringListView today={today} onBack={() => setInputPage(null)} />;
   if (inputPage?.page === "favorites") {
@@ -234,37 +261,58 @@ export function SettingsView({ settings, initialCategoryPage = null, persistence
           </p>
         )}
 
-        <section className="card">
-          <h2>バックアップ</h2>
-          <dl className="rows">
-            <div className="row">
-              <dt>最後に保存した日時</dt>
-              <dd>{settings.lastBackupAt ? formatDateTimeJa(settings.lastBackupAt) : "まだ保存していません"}</dd>
-            </div>
-          </dl>
+        <section className="card settings-group">
+          <h2>給料日と予算</h2>
           <div className="setting-list">
-            <SettingRow label="お知らせまでの日数" value={`${settings.backupReminderDays}日`} onClick={() => setSheet("reminder")} />
+            <SettingRow label="給料日" value={`毎月${settings.payday}日`} onClick={() => setSheet("payday")} />
+            <SettingRow label="給料日が休日なら" value={SHIFT_LABELS[settings.paydayHolidayShift]} onClick={() => setSheet("shift")} />
+            <SettingRow label="生活防衛資金" value={formatYen(settings.defenseFund)} onClick={() => setSheet("fund")} />
+            <SettingRow label="予算の決め方" value={settings.budgetMode === "manual" ? "自分で決める" : "自動"} onClick={() => setSheet("budgetMode")} />
+            {settings.budgetMode === "manual" && (
+              <SettingRow label="月の予算" value={settings.monthlyBudget === null ? "未設定" : formatYen(settings.monthlyBudget)} onClick={() => setSheet("monthly")} />
+            )}
+            <SettingRow label="月の予算の区切り" value={settings.budgetMonthBoundary === "payday" ? "給料日から" : "暦月"} onClick={() => setSheet("boundary")} />
           </div>
-          <p className="muted small">全部のデータを1つのファイルに保存します。定期的に保存してください。お知らせはホームに出します。</p>
-          <div className="actions">
-            <button type="button" className="primary-btn" disabled={busy} onClick={handleExport}>
-              <Icon name="download" size={18} />
-              バックアップを保存
-            </button>
-            <button type="button" className="secondary-btn" disabled={busy} onClick={() => fileInput.current?.click()}>
-              <Icon name="upload" size={18} />
-              バックアップから追加
-            </button>
-            <input
-              ref={fileInput}
-              type="file"
-              accept="application/json,.json"
-              hidden
-              onChange={(e) => void handleFile(e.target.files?.[0])}
-            />
-          </div>
-          <p className="muted small">読み込むときは、今あるデータを消さずに足します。実行前に件数を確認できます。</p>
+        </section>
+        <p className="settings-foot">生活防衛資金は、使える額から先に外しておくお金です。</p>
 
+        <section className="card settings-group">
+          <h2>表示</h2>
+          <div className="setting-list">
+            <SwitchRow label="かんたん表示" checked={settings.simpleMode === true} onChange={(v) => void change({ simpleMode: v })} />
+            <SettingRow label="ホームの一番大きい数字" value={settings.homeMainFigure === "remaining" ? "今週あと◯円" : "今週使った額"} onClick={() => setSheet("figure")} />
+            <SettingRow label="週の始まり" value={settings.weekStart === "sunday" ? "日曜" : "月曜"} onClick={() => setSheet("weekStart")} />
+          </div>
+        </section>
+        <p className="settings-foot">かんたん表示は、ホームと見通しの項目を少なくします。計算は変わりません。</p>
+
+        <section className="card settings-group">
+          <h2>分類</h2>
+          <div className="setting-list">
+            <SettingRow label="支出の分類" value="" onClick={() => setPage("expense")} />
+            <SettingRow label="収入の分類" value="" onClick={() => setPage("income")} />
+          </div>
+        </section>
+
+        <section className="card settings-group">
+          <h2>入力</h2>
+          <div className="setting-list">
+            <SettingRow label="繰り返し" value="" onClick={() => setInputPage({ page: "recurring" })} />
+            <SettingRow label="よく使う入力" value="" onClick={() => setInputPage({ page: "favorites" })} />
+            <SettingRow label="給料明細" value="" onClick={() => setInputPage({ page: "payroll" })} />
+          </div>
+        </section>
+
+        <section className="card settings-group">
+          <h2>データ</h2>
+          <div className="setting-list">
+            <SettingRow label="バックアップを保存" value={settings.lastBackupAt ? formatDateTimeJa(settings.lastBackupAt) : "まだ保存していません"} onClick={busy ? undefined : () => void handleExport()} />
+            <SettingRow label="バックアップから追加" value="" onClick={busy ? undefined : () => fileInput.current?.click()} />
+            <SettingRow label="バックアップのお知らせ" value={`${settings.backupReminderDays}日ごと`} onClick={() => setSheet("reminder")} />
+            <SettingRow label="AIに渡す書き出し" value="" onClick={() => setAiPage(true)} />
+            <SettingRow label="消えにくくする設定" value={PERSISTENCE_TEXT[persistence]} onClick={persistence === "denied" ? () => void handlePersist() : undefined} />
+          </div>
+          <input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={(e) => void handleFile(e.target.files?.[0])} />
           {preview && totals && (
             <div className="preview" aria-live="polite">
               <h3>読み込む内容の確認</h3>
@@ -334,84 +382,13 @@ export function SettingsView({ settings, initialCategoryPage = null, persistence
             </div>
           )}
         </section>
+        <p className="settings-foot">バックアップは今あるデータを消さずに足します。ブラウザのサイトデータを消したときや機種変更のときは、バックアップから戻します。</p>
 
-        <AiExportCard weekStart={settings.weekStart} />
-
-        <section className="card">
-          <h2>データの保護</h2>
-          <dl className="rows">
-            <div className="row">
-              <dt>消えにくくする設定</dt>
-              <dd>{PERSISTENCE_TEXT[persistence]}</dd>
-            </div>
-          </dl>
-          <p className="small">
-            ブラウザが自動でデータを消すのを防ぐ設定です。自分で「Cookieとサイトデータ」を消したときや機種変更では消えます。
-            最後に守ってくれるのはバックアップです。同じ kirokubox.github.io の他のアプリもまとめて消えます。
-          </p>
-          {persistence === "denied" && (
-            <div className="actions">
-              <button type="button" className="secondary-btn" onClick={() => void handlePersist()}>
-                もう一度許可を求める
-              </button>
-            </div>
-          )}
-        </section>
-
-        <section className="card">
-          <h2>分類</h2>
-          <div className="setting-list">
-            <SettingRow label="支出の分類" value="" onClick={() => setPage("expense")} />
-            <SettingRow label="収入の分類" value="" onClick={() => setPage("income")} />
-          </div>
-        </section>
-
-        <section className="card">
-          <h2>入力</h2>
-          <div className="setting-list">
-            <SettingRow label="繰り返し" value="" onClick={() => setInputPage({ page: "recurring" })} />
-            <SettingRow label="よく使う入力" value="" onClick={() => setInputPage({ page: "favorites" })} />
-            <SettingRow label="給料明細" value="" onClick={() => setInputPage({ page: "payroll" })} />
-          </div>
-          <p className="muted small">家賃やサブスクなどの定期の支払い・定期の振替は「繰り返し」で自動に。給料は明細1枚分をまとめて入れます。</p>
-        </section>
-
-        <section className="card">
-          <h2>給料日と予算</h2>
-          <div className="setting-list">
-            <SettingRow label="給料日" value={`毎月${settings.payday}日`} onClick={() => setSheet("payday")} />
-            <SettingRow label="給料日が休日なら" value={SHIFT_LABELS[settings.paydayHolidayShift]} onClick={() => setSheet("shift")} />
-            <SettingRow label="生活防衛資金" value={formatYen(settings.defenseFund)} onClick={() => setSheet("fund")} />
-            <SettingRow label="予算の決め方" value={settings.budgetMode === "manual" ? "自分で決める" : "自動（使える額から）"} onClick={() => setSheet("budgetMode")} />
-            {settings.budgetMode === "manual" && (
-              <SettingRow label="月の予算" value={settings.monthlyBudget === null ? "未設定" : formatYen(settings.monthlyBudget)} onClick={() => setSheet("monthly")} />
-            )}
-            <SettingRow label="月の予算の区切り" value={settings.budgetMonthBoundary === "payday" ? "給料日から" : "暦月"} onClick={() => setSheet("boundary")} />
-          </div>
-          <p className="muted small">生活防衛資金は、使える額から先に外しておくお金です。集計の「月」は、どちらを選んでも暦月です。</p>
-          {settings.budgetMode === "manual" && (
-            <p className="muted small">週・月の予算の目標です。使った額は、日常・満足・反省のタグが付いた支出（変動費）だけを数えます。家賃・税金・保険などタグのない支出は入りません。</p>
-          )}
-        </section>
-
-        <section className="card">
-          <h2>表示</h2>
-          <div className="setting-list">
-            <SettingRow label="かんたん表示" value={settings.simpleMode ? "オン" : "オフ"} onClick={() => void change({ simpleMode: !settings.simpleMode })} />
-            <SettingRow label="ホームの一番大きい数字" value={settings.homeMainFigure === "remaining" ? "今週あと◯円" : "今週使った額"} onClick={() => setSheet("figure")} />
-            <SettingRow label="週の始まり" value={settings.weekStart === "sunday" ? "日曜" : "月曜"} onClick={() => setSheet("weekStart")} />
-          </div>
-          <p className="muted small">かんたん表示でも、使える額の計算には取り置き・予定出費をこれまでどおり含めます。</p>
-        </section>
-
-        <section className="card">
+        <section className="card settings-group">
           <h2>このアプリについて</h2>
-          <dl className="rows">
-            <div className="row">
-              <dt>バージョン</dt>
-              <dd>{APP_VERSION}</dd>
-            </div>
-          </dl>
+          <div className="setting-list">
+            <SettingRow label="バージョン" value={APP_VERSION} />
+          </div>
         </section>
       </main>
 

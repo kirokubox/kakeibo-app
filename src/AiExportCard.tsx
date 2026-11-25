@@ -17,6 +17,14 @@ const KINDS: Array<[Exclude<SummaryPeriodKind, "year">, string]> = [
 ];
 
 /** 設定の「AIに渡す書き出し」：週・月・任意の期間をMarkdownで書き出す（かぞえ帳・生活記録と同じ入口） */
+/** 画面に見せる期間（11/1〜11/30。年が違えば年も） */
+function shortRange(start: string, end: string): string {
+  if (!start || !end) return "";
+  const f = (d: string, withYear: boolean) => `${withYear ? `${d.slice(0, 4)}年` : ""}${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
+  const diffYear = start.slice(0, 4) !== end.slice(0, 4);
+  return `${f(start, diffYear)}〜${f(end, diffYear)}`;
+}
+
 export function AiExportCard({ weekStart }: { weekStart: WeekStart }) {
   const [period, setPeriod] = useState<SummaryPeriod>(() => periodAround("month", todayKey(), undefined, weekStart));
   const [busy, setBusy] = useState(false);
@@ -81,7 +89,7 @@ export function AiExportCard({ weekStart }: { weekStart: WeekStart }) {
         </div>
       ) : (
         <p className="field-hint center">
-          {range.start} 〜 {range.end}
+          {shortRange(range.start, range.end)}
         </p>
       )}
       <div className="actions">
@@ -95,7 +103,7 @@ export function AiExportCard({ weekStart }: { weekStart: WeekStart }) {
           {message.text}
         </p>
       )}
-      <p className="muted small">収入・支出のまとめ、予算と実績、分類別の合計、明細（メモ・立替・取り置きを含む）、未回収の立替などをMarkdownにします。ファイル名は kakeibo-ai-開始日_終了日.md です。</p>
+      <p className="muted small">収入・支出のまとめ、予算と実績、分類別の合計、明細（メモ・立替・取り置きを含む）、未回収の立替を、AIに読ませやすい文書にして保存します。</p>
     </section>
   );
 }
